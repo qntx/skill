@@ -6,7 +6,28 @@ license.workspace = true
 repository.workspace = true
 description.workspace = true
 
+[[bin]]
+name = "skills"
+path = "src/main.rs"
+
 [dependencies]
+skill = { workspace = true, features = ["network", "telemetry"] }
+
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+miette = { version = "7", features = ["fancy"] }
+dialoguer = "0.12"
+indicatif = "0.18"
+console = "0.16"
+crossterm = "0.29"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+urlencoding = "2.1.3"
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
+dirs = "6"
+tempfile = "3"
 
 [lints]
 workspace = true

@@ -7,6 +7,27 @@ repository.workspace = true
 description.workspace = true
 
 [dependencies]
+tokio = { workspace = true, features = ["fs", "process", "io-util"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+sha2 = { workspace = true }
+url = { workspace = true }
+regex = { workspace = true }
+dirs = "6"
+tempfile = "3"
+reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false, optional = true }
+async-trait = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+junction = "1"
+
+[features]
+default = ["network"]
+network = ["dep:reqwest"]
+telemetry = ["network"]
 
 [lints]
 workspace = true

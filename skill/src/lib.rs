@@ -1,14 +1,50 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! # skill
+//!
+//! A library for managing AI agent skills across the open skills ecosystem.
+//!
+//! This crate provides the core functionality for discovering, installing,
+//! listing, and removing agent skills. It is designed to be embedded in agent
+//! frameworks so they gain full skills ecosystem support out of the box.
+//!
+//! ## Quick Start
+//!
+//! ```rust,no_run
+//! use skill::manager::SkillManager;
+//!
+//! # async fn example() -> skill::error::Result<()> {
+//! let manager = SkillManager::builder().build();
+//!
+//! // Discover skills in a repository
+//! let skills = manager
+//!     .discover_skills(std::path::Path::new("./my-repo"), &Default::default())
+//!     .await?;
+//!
+//! // List installed skills
+//! let installed = manager.list_installed(&Default::default()).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Feature Flags
+//!
+//! - **`network`** (default) — Enables HTTP-based operations (fetching remote
+//!   skills, well-known providers, GitHub API).
+//! - **`telemetry`** — Enables anonymous usage telemetry. Disabled by default
+//!   for library consumers; enabled by the CLI.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod agents;
+pub mod error;
+pub mod git;
+pub mod installer;
+pub mod local_lock;
+pub mod lock;
+pub mod manager;
+pub mod providers;
+pub mod skills;
+pub mod source;
+pub mod telemetry;
+pub mod types;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use error::{Error, Result};
+pub use manager::SkillManager;
+pub use types::*;

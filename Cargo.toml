@@ -11,6 +11,17 @@ repository = "https://github.com/qntx/skill"
 description = "AI Agent Registration and Verification."
 
 [workspace.dependencies]
+skill = {version = "0.1.0", path = "skill", features = ["network", "telemetry"] }
+
+tokio = { version = "1", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "2"
+tracing = "0.1"
+sha2 = "0.10"
+url = "2"
+regex = "1"
 
 [profile.release]
 codegen-units = 1
