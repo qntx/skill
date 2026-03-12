@@ -226,6 +226,12 @@ impl SkillManager {
 
     /// Remove installed skills by name.
     ///
+    /// Matches the Vercel TS `removeCommand` behavior:
+    ///  - Cleans up all agent-specific directories (including the "native"
+    ///    directory for universal agents to remove legacy symlinks).
+    ///  - Only removes the canonical path if no remaining (non-targeted)
+    ///    agents still reference it.
+    ///
     /// # Errors
     ///
     /// Returns an error on I/O failure.
@@ -240,6 +246,7 @@ impl SkillManager {
 
         for name in skill_names {
             let canonical = installer::get_canonical_path(name, scope, &cwd);
+            let sanitized = installer::sanitize_name(name);
 
             let target_agents: Vec<AgentId> = if options.agents.is_empty() {
                 self.agents.all_ids()
@@ -249,19 +256,63 @@ impl SkillManager {
 
             for agent_id in &target_agents {
                 if let Some(agent) = self.agents.get(agent_id) {
-                    let agent_base = installer::agent_base_dir(agent, &self.agents, scope, &cwd);
-                    let skill_dir = agent_base.join(installer::sanitize_name(name));
+                    // Collect all paths that might contain this skill for
+                    // the agent, including the "native" directory path to
+                    // clean up legacy symlinks (matches TS behavior).
+                    let mut paths_to_cleanup = Vec::new();
 
-                    if skill_dir != canonical {
-                        let _ = tokio::fs::remove_dir_all(&skill_dir).await;
+                    let agent_base = installer::agent_base_dir(agent, &self.agents, scope, &cwd);
+                    paths_to_cleanup.push(agent_base.join(&sanitized));
+
+                    let native_dir = match scope {
+                        crate::types::InstallScope::Global => {
+                            agent.global_skills_dir.as_ref().map(|d| d.join(&sanitized))
+                        }
+                        crate::types::InstallScope::Project => {
+                            Some(cwd.join(&agent.skills_dir).join(&sanitized))
+                        }
+                    };
+                    if let Some(nd) = native_dir
+                        && !paths_to_cleanup.contains(&nd)
+                    {
+                        paths_to_cleanup.push(nd);
+                    }
+
+                    for path in &paths_to_cleanup {
+                        if *path == canonical {
+                            continue;
+                        }
+                        let _ = tokio::fs::remove_dir_all(path).await;
+                        let _ = tokio::fs::remove_file(path).await;
                     }
                 }
             }
 
-            let removed = tokio::fs::remove_dir_all(&canonical).await.is_ok();
+            // Only remove canonical if no remaining agents still use it.
+            let all_ids = self.agents.all_ids();
+            let remaining: Vec<&AgentId> = all_ids
+                .iter()
+                .filter(|id| !target_agents.contains(id))
+                .collect();
+
+            let mut still_used = false;
+            for aid in &remaining {
+                if let Some(agent) = self.agents.get(aid)
+                    && installer::is_skill_installed(name, agent, scope, &cwd).await
+                {
+                    still_used = true;
+                    break;
+                }
+            }
+
+            if !still_used {
+                let _ = tokio::fs::remove_dir_all(&canonical).await;
+                let _ = tokio::fs::remove_file(&canonical).await;
+            }
+
             results.push(RemoveResult {
                 skill: name.clone(),
-                success: removed,
+                success: true,
                 error: None,
             });
         }

@@ -17,6 +17,7 @@ sha2 = { workspace = true }
 url = { workspace = true }
 regex = { workspace = true }
 dirs = "6"
+pathdiff = "0.2"
 tempfile = "3"
 reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false, optional = true }
 async-trait = "0.1"

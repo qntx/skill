@@ -155,14 +155,22 @@ fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("~"))
 }
 
-fn config_home() -> PathBuf {
-    dirs::config_dir().unwrap_or_else(|| home().join(".config"))
+/// XDG config home, matching the behavior of the `xdg-basedir` npm package:
+/// use `$XDG_CONFIG_HOME` if set, otherwise fall back to `~/.config` on all
+/// platforms.  This differs from `dirs::config_dir()` which returns
+/// platform-specific paths (e.g. `~/Library/Application Support` on macOS,
+/// `%APPDATA%` on Windows) that would break interop with the Vercel TS CLI.
+fn xdg_config_home() -> PathBuf {
+    std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map_or_else(|| home().join(".config"), PathBuf::from)
 }
 
 /// Register all built-in agents matching the `TypeScript` reference.
 fn register_builtin_agents(reg: &mut AgentRegistry) {
     let h = home();
-    let cfg = config_home();
+    let cfg = xdg_config_home();
     let codex_home = std::env::var("CODEX_HOME")
         .ok()
         .filter(|s| !s.trim().is_empty())
