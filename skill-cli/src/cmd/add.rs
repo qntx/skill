@@ -1,6 +1,7 @@
 //! `skills add <source>` command implementation.
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -55,6 +56,7 @@ pub struct AddArgs {
     pub full_depth: bool,
 }
 
+#[allow(clippy::literal_string_with_formatting_args)]
 fn make_spinner(msg: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -96,13 +98,10 @@ fn show_missing_source_error() -> ! {
 /// Select skills to install from the discovered set.
 fn select_skills(
     skills: &[Skill],
-    skill_filter: &Option<Vec<String>>,
+    skill_filter: Option<&Vec<String>>,
     yes: bool,
 ) -> Result<Vec<Skill>> {
-    if skill_filter
-        .as_ref()
-        .is_some_and(|s| s.contains(&"*".to_owned()))
-    {
+    if skill_filter.is_some_and(|s| s.contains(&"*".to_owned())) {
         println!(
             "  {} Installing all {} skills",
             style("ℹ").blue(),
@@ -155,15 +154,12 @@ fn select_skills(
 /// Select target agents for installation.
 async fn select_agents(
     manager: &SkillManager,
-    agent_arg: &Option<Vec<String>>,
+    agent_arg: Option<&Vec<String>>,
     yes: bool,
 ) -> Result<Vec<AgentId>> {
     let all_ids = manager.agents().all_ids();
 
-    if agent_arg
-        .as_ref()
-        .is_some_and(|a| a.contains(&"*".to_owned()))
-    {
+    if agent_arg.is_some_and(|a| a.contains(&"*".to_owned())) {
         return Ok(all_ids);
     }
 
@@ -334,8 +330,8 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         return Ok(());
     }
 
-    let selected_skills = select_skills(&skills, &args.skill, args.yes)?;
-    let target_agents = select_agents(&manager, &args.agent, args.yes).await?;
+    let selected_skills = select_skills(&skills, args.skill.as_ref(), args.yes)?;
+    let target_agents = select_agents(&manager, args.agent.as_ref(), args.yes).await?;
 
     let scope = if args.global {
         InstallScope::Global
@@ -440,12 +436,13 @@ fn show_install_summary(
     for s in selected_skills {
         let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
         let short = ui::shorten_path(&canonical, cwd);
-        summary.push_str(&format!("{}\n", style(short).cyan()));
-        summary.push_str(&format!(
-            "  {} {}\n",
+        let _ = writeln!(summary, "{}", style(short).cyan());
+        let _ = writeln!(
+            summary,
+            "  {} {}",
             style("agents:").dim(),
             ui::format_list(&agent_names, 5)
-        ));
+        );
     }
     ui::print_note(&summary, "Installation Summary");
 }

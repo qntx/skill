@@ -77,7 +77,7 @@ async fn main() -> miette::Result<()> {
             Commands::Find(args) => cmd::find::run(args).await?,
             Commands::Check => cmd::check::run().await?,
             Commands::Update => cmd::update::run().await?,
-            Commands::Init(args) => cmd::init::run(args)?,
+            Commands::Init(args) => cmd::init::run(&args)?,
             Commands::ExperimentalInstall => cmd::install_lock::run().await?,
             Commands::ExperimentalSync(args) => cmd::sync::run(args).await?,
         },

@@ -1,6 +1,7 @@
 //! `skills remove` command implementation.
 
 use std::collections::HashSet;
+use std::path::Path;
 
 use clap::Args;
 use console::style;
@@ -34,18 +35,13 @@ pub struct RemoveArgs {
     pub all: bool,
 }
 
-/// Run the remove command.
-pub async fn run(args: RemoveArgs) -> Result<()> {
-    let manager = SkillManager::builder().build();
-    let scope = if args.global {
-        InstallScope::Global
-    } else {
-        InstallScope::Project
-    };
-    let cwd = std::env::current_dir().into_diagnostic()?;
-
-    // Scan for installed skill directories
-    let canonical = canonical_skills_dir(scope, &cwd);
+async fn scan_installed_skills(
+    manager: &SkillManager,
+    scope: InstallScope,
+    global: bool,
+    cwd: &Path,
+) -> Vec<String> {
+    let canonical = canonical_skills_dir(scope, cwd);
     let mut installed_names: HashSet<String> = HashSet::new();
 
     if let Ok(mut entries) = tokio::fs::read_dir(&canonical).await {
@@ -58,9 +54,8 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         }
     }
 
-    // Also scan agent-specific directories
     for config in manager.agents().all_configs() {
-        let dir = if args.global {
+        let dir = if global {
             config.global_skills_dir.clone()
         } else {
             Some(cwd.join(&config.skills_dir))
@@ -80,6 +75,19 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
 
     let mut installed: Vec<String> = installed_names.into_iter().collect();
     installed.sort();
+    installed
+}
+
+/// Run the remove command.
+pub async fn run(args: RemoveArgs) -> Result<()> {
+    let manager = SkillManager::builder().build();
+    let scope = if args.global {
+        InstallScope::Global
+    } else {
+        InstallScope::Project
+    };
+    let cwd = std::env::current_dir().into_diagnostic()?;
+    let installed = scan_installed_skills(&manager, scope, args.global, &cwd).await;
 
     if installed.is_empty() {
         println!("  {}", style("No skills found to remove.").yellow());
@@ -147,15 +155,16 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         }
     }
 
-    let target_agents: Vec<AgentId> = if let Some(ref agent_names) = args.agent {
-        if agent_names.contains(&"*".to_owned()) {
-            manager.agents().all_ids()
-        } else {
-            agent_names.iter().map(AgentId::new).collect()
-        }
-    } else {
-        manager.agents().all_ids()
-    };
+    let target_agents: Vec<AgentId> = args.agent.as_ref().map_or_else(
+        || manager.agents().all_ids(),
+        |agent_names| {
+            if agent_names.contains(&"*".to_owned()) {
+                manager.agents().all_ids()
+            } else {
+                agent_names.iter().map(AgentId::new).collect()
+            }
+        },
+    );
 
     let remove_opts = RemoveOptions {
         scope,

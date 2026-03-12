@@ -90,7 +90,7 @@ pub async fn run() -> Result<()> {
     }
 
     // Telemetry
-    let total = lock.skills.len() as u32 - skipped;
+    let total = u32::try_from(lock.skills.len()).unwrap_or(u32::MAX) - skipped;
     let mut props = HashMap::new();
     props.insert("skillCount".to_owned(), total.to_string());
     props.insert("updatesAvailable".to_owned(), updates.len().to_string());

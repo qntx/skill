@@ -12,7 +12,7 @@ pub struct InitArgs {
 }
 
 /// Run the init command.
-pub fn run(args: InitArgs) -> Result<()> {
+pub fn run(args: &InitArgs) -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let cwd_name = cwd
         .file_name()

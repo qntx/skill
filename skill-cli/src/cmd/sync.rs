@@ -8,7 +8,7 @@ use miette::{IntoDiagnostic, Result};
 
 use skill::SkillManager;
 use skill::skills::discover_skills;
-use skill::types::{AgentId, DiscoverOptions, InstallMode, InstallOptions, InstallScope};
+use skill::types::{AgentId, DiscoverOptions, InstallMode, InstallOptions, InstallScope, Skill};
 
 /// Arguments for the `experimental_sync` command.
 #[derive(Args)]
@@ -20,6 +20,44 @@ pub struct SyncArgs {
     /// Skip confirmation prompts.
     #[arg(short, long)]
     pub yes: bool,
+}
+
+async fn scan_node_modules(
+    node_modules: &std::path::Path,
+    discover_opts: &DiscoverOptions,
+) -> Vec<Skill> {
+    let mut skills = Vec::new();
+    let Ok(mut entries) = tokio::fs::read_dir(node_modules).await else {
+        return skills;
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        if name_str.starts_with('.') {
+            continue;
+        }
+
+        if name_str.starts_with('@') {
+            let scope_dir = entry.path();
+            if let Ok(mut scoped) = tokio::fs::read_dir(&scope_dir).await {
+                while let Ok(Some(pkg)) = scoped.next_entry().await {
+                    let pkg_path = pkg.path();
+                    if let Ok(found) = discover_skills(&pkg_path, None, discover_opts).await {
+                        skills.extend(found);
+                    }
+                }
+            }
+        } else {
+            let pkg_path = entry.path();
+            if let Ok(found) = discover_skills(&pkg_path, None, discover_opts).await {
+                skills.extend(found);
+            }
+        }
+    }
+
+    skills
 }
 
 /// Run the `experimental_sync` command.
@@ -35,39 +73,8 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
 
     println!("  Scanning node_modules for skills...");
-
-    let mut all_skills = Vec::new();
     let discover_opts = DiscoverOptions::default();
-
-    // Scan top-level packages
-    if let Ok(mut entries) = tokio::fs::read_dir(&node_modules).await {
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-
-            if name_str.starts_with('.') {
-                continue;
-            }
-
-            // Scoped packages (@org/pkg)
-            if name_str.starts_with('@') {
-                let scope_dir = entry.path();
-                if let Ok(mut scoped) = tokio::fs::read_dir(&scope_dir).await {
-                    while let Ok(Some(pkg)) = scoped.next_entry().await {
-                        let pkg_path = pkg.path();
-                        if let Ok(found) = discover_skills(&pkg_path, None, &discover_opts).await {
-                            all_skills.extend(found);
-                        }
-                    }
-                }
-            } else {
-                let pkg_path = entry.path();
-                if let Ok(found) = discover_skills(&pkg_path, None, &discover_opts).await {
-                    all_skills.extend(found);
-                }
-            }
-        }
-    }
+    let all_skills = scan_node_modules(&node_modules, &discover_opts).await;
 
     if all_skills.is_empty() {
         println!("  {}", style("No skills found in node_modules.").dim());

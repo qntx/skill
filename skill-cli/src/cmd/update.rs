@@ -5,6 +5,12 @@ use std::collections::HashMap;
 use console::style;
 use miette::Result;
 
+struct UpdateEntry {
+    name: String,
+    source_url: String,
+    skill_path: Option<String>,
+}
+
 /// Run the update command.
 pub async fn run() -> Result<()> {
     println!("  Checking for skill updates...");
@@ -26,13 +32,6 @@ pub async fn run() -> Result<()> {
     }
 
     let token = skill::lock::get_github_token();
-
-    struct UpdateEntry {
-        name: String,
-        source_url: String,
-        skill_path: Option<String>,
-    }
-
     let mut updates: Vec<UpdateEntry> = Vec::new();
 
     for (name, entry) in &lock.skills {
