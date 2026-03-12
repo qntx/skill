@@ -39,6 +39,7 @@ pub mod installer;
 pub mod local_lock;
 pub mod lock;
 pub mod manager;
+pub mod plugin_manifest;
 pub mod providers;
 pub mod skills;
 pub mod source;

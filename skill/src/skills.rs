@@ -192,7 +192,8 @@ fn lexical_normalize(path: &Path) -> PathBuf {
 ///
 /// The discovery strategy mirrors the `TypeScript` reference:
 /// 1. Check if the search path itself has a `SKILL.md` (single root skill).
-/// 2. Scan priority directories (common skill locations for each agent).
+/// 2. Scan priority directories (common skill locations for each agent),
+///    including paths declared in plugin manifests.
 /// 3. Fall back to recursive search if nothing was found, or if `full_depth`
 ///    is enabled.
 ///
@@ -219,10 +220,22 @@ pub async fn discover_skills(
     let mut seen_names: HashSet<String> = HashSet::new();
     let include_internal = options.include_internal;
 
+    // Get plugin groupings to map skills to their parent plugin.
+    let plugin_groupings = crate::plugin_manifest::get_plugin_groupings(&search_path).await;
+
+    let enhance_skill = |mut skill: Skill| -> Skill {
+        let resolved = std::path::absolute(&skill.path).unwrap_or_else(|_| skill.path.clone());
+        if let Some(name) = plugin_groupings.get(&resolved) {
+            skill.plugin_name = Some(name.clone());
+        }
+        skill
+    };
+
     // 1. Root SKILL.md
     if has_skill_md(&search_path).await
         && let Some(skill) = parse_skill_md(&search_path.join("SKILL.md"), include_internal).await?
     {
+        let skill = enhance_skill(skill);
         seen_names.insert(skill.name.clone());
         skills.push(skill);
         if !options.full_depth {
@@ -230,8 +243,11 @@ pub async fn discover_skills(
         }
     }
 
-    // 2. Priority search directories
-    for dir in &build_priority_dirs(&search_path) {
+    // 2. Priority search directories + plugin manifest paths
+    let mut priority_dirs = build_priority_dirs(&search_path);
+    priority_dirs.extend(crate::plugin_manifest::get_plugin_skill_paths(&search_path).await);
+
+    for dir in &priority_dirs {
         let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
             continue;
         };
@@ -250,7 +266,7 @@ pub async fn discover_skills(
                 parse_skill_md(&skill_dir.join("SKILL.md"), include_internal).await?
                 && seen_names.insert(skill.name.clone())
             {
-                skills.push(skill);
+                skills.push(enhance_skill(skill));
             }
         }
     }
@@ -262,7 +278,7 @@ pub async fn discover_skills(
                 parse_skill_md(&skill_dir.join("SKILL.md"), include_internal).await?
                 && seen_names.insert(skill.name.clone())
             {
-                skills.push(skill);
+                skills.push(enhance_skill(skill));
             }
         }
     }

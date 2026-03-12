@@ -171,6 +171,7 @@ fn xdg_config_home() -> PathBuf {
 fn register_builtin_agents(reg: &mut AgentRegistry) {
     let h = home();
     let cfg = xdg_config_home();
+    let cwd = std::env::current_dir().unwrap_or_default();
     let codex_home = std::env::var("CODEX_HOME")
         .ok()
         .filter(|s| !s.trim().is_empty())
@@ -238,14 +239,14 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
         "CodeBuddy",
         ".codebuddy/skills",
         Some(h.join(".codebuddy/skills")),
-        vec![h.join(".codebuddy")],
+        vec![cwd.join(".codebuddy"), h.join(".codebuddy")],
     ));
     reg.register(agent(
         "codex",
         "Codex",
         ".agents/skills",
         Some(codex_home.join("skills")),
-        vec![codex_home],
+        vec![codex_home, PathBuf::from("/etc/codex")],
     ));
     reg.register(agent(
         "command-code",
@@ -259,7 +260,7 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
         "Continue",
         ".continue/skills",
         Some(h.join(".continue/skills")),
-        vec![h.join(".continue")],
+        vec![cwd.join(".continue"), h.join(".continue")],
     ));
     reg.register(agent(
         "cortex",
@@ -414,7 +415,7 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
             "Replit",
             ".agents/skills",
             Some(cfg.join("agents/skills")),
-            vec![], // detected differently
+            vec![cwd.join(".replit")],
         );
         c.show_in_universal_list = false;
         c
