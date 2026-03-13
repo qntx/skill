@@ -19,12 +19,6 @@ struct SkippedSkill {
 }
 
 fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
-    if entry.source_type == "local" {
-        return "Local path".to_owned();
-    }
-    if entry.source_type == "git" {
-        return "Git URL (hash tracking not supported)".to_owned();
-    }
     if entry.skill_folder_hash.is_empty() {
         return "No version hash available".to_owned();
     }
@@ -35,10 +29,7 @@ fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
 }
 
 fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
-    entry.source_type == "local"
-        || entry.source_type == "git"
-        || entry.skill_folder_hash.is_empty()
-        || entry.skill_path.is_none()
+    entry.skill_folder_hash.is_empty() || entry.skill_path.is_none()
 }
 
 fn print_skipped_skills(skipped: &[SkippedSkill]) {

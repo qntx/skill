@@ -15,7 +15,6 @@ use skill::installer::canonical_skills_dir;
 use skill::types::{AgentId, InstallScope, RemoveOptions};
 
 const DIM: &str = "\x1b[38;5;102m";
-const TEXT: &str = "\x1b[38;5;145m";
 const RESET: &str = "\x1b[0m";
 
 /// Arguments for the `remove` command.
@@ -140,10 +139,16 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
         manager.agents().all_ids()
     };
 
+    let spinner = cliclack::spinner();
+    spinner.start("Scanning for installed skills...");
     let installed = scan_installed_skills(&manager, scope, args.global, &cwd).await;
+    spinner.stop(format!(
+        "Found {} unique installed skill(s)",
+        installed.len()
+    ));
 
     if installed.is_empty() {
-        println!("{DIM}No skills found to remove.{RESET}");
+        let _ = cliclack::outro_cancel("\x1b[33mNo skills found to remove.\x1b[0m");
         return Ok(());
     }
 
@@ -163,7 +168,9 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
                 .collect()
         }
     } else {
-        let mut prompt = cliclack::multiselect("Select skills to remove");
+        let mut prompt = cliclack::multiselect(format!(
+            "Select skills to remove {DIM}(space to toggle){RESET}"
+        ));
         for s in &installed {
             prompt = prompt.item(s.clone(), s, "");
         }
@@ -171,7 +178,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
         match prompt.interact() {
             Ok(sel) => sel,
             Err(_) => {
-                println!("{DIM}Removal cancelled{RESET}");
+                let _ = cliclack::outro_cancel("Removal cancelled");
                 std::process::exit(0);
             }
         }
@@ -183,9 +190,10 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
     }
 
     if !args.yes && !args.all {
-        println!("{TEXT}Skills to remove:{RESET}");
+        println!();
+        let _ = cliclack::log::info("Skills to remove:");
         for s in &selected {
-            println!("  \x1b[31m•\x1b[0m {s}");
+            let _ = cliclack::log::remark(format!(" \x1b[31m\u{2022}\x1b[0m {s}"));
         }
         println!();
 
@@ -198,12 +206,13 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
         .into_diagnostic()?;
 
         if !confirmed {
-            println!("{DIM}Removal cancelled{RESET}");
+            let _ = cliclack::outro_cancel("Removal cancelled");
             std::process::exit(0);
         }
     }
 
-    println!("{TEXT}Removing skills...{RESET}");
+    let remove_spinner = cliclack::spinner();
+    remove_spinner.start("Removing skills...");
 
     let agents_for_telemetry = target_agents.clone();
     let results = manager
@@ -218,20 +227,28 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
         .await
         .map_err(|e| miette!("{e}"))?;
 
+    remove_spinner.stop("Removal process complete");
+
     let success_count = results.iter().filter(|r| r.success).count();
     let fail_count = results.iter().filter(|r| !r.success).count();
 
-    println!();
     if success_count > 0 {
-        println!("{TEXT}✓ Removed {success_count} skill(s){RESET}");
+        let _ = cliclack::log::success(format!(
+            "\x1b[32mSuccessfully removed {success_count} skill(s)\x1b[0m"
+        ));
     }
     if fail_count > 0 {
-        println!("{DIM}✗ Failed to remove {fail_count} skill(s){RESET}");
+        let _ = cliclack::log::error(format!(
+            "\x1b[31mFailed to remove {fail_count} skill(s)\x1b[0m"
+        ));
         for r in &results {
             if !r.success
                 && let Some(ref err) = r.error
             {
-                println!("  {DIM}{}: {err}{RESET}", r.skill);
+                let _ = cliclack::log::remark(format!(
+                    " \x1b[31m\u{2717}\x1b[0m {}: {DIM}{err}{RESET}",
+                    r.skill
+                ));
             }
         }
     }
@@ -251,8 +268,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
     send_remove_telemetry(&selected, &agents_for_telemetry, args.global).await;
 
     println!();
-    println!("\x1b[32m\x1b[1mDone!\x1b[0m");
-    println!();
+    let _ = cliclack::outro("\x1b[32mDone!\x1b[0m");
     Ok(())
 }
 

@@ -525,9 +525,11 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
 /// A search result item for the fzf prompt.
 #[derive(Clone)]
 pub struct FzfItem {
-    /// Display label.
+    /// Display label (skill name).
     pub label: String,
-    /// Description shown next to label.
+    /// Hint shown dim next to label (e.g. source/pkg).
+    pub hint: String,
+    /// Description shown as a badge (e.g. install count).
     pub description: String,
     /// Value returned on selection.
     pub value: String,
@@ -548,60 +550,61 @@ fn build_fzf_lines(
     cursor: usize,
     results: &[FzfItem],
     max_visible: usize,
+    loading: bool,
 ) -> Vec<String> {
-    let mut lines = vec![format!("{}  \x1b[1m{message}\x1b[0m", state.icon())];
+    let mut lines = Vec::new();
 
     match state {
         PromptState::Active => {
-            lines.push(format!(
-                "{S_BAR}  \x1b[2mSearch:\x1b[0m {query}\x1b[7m \x1b[0m"
-            ));
-            lines.push(S_BAR.to_string());
+            lines.push(format!("{TEXT}{message}{RESET} {query}\x1b[1m_\x1b[0m"));
+            lines.push(String::new());
 
-            if results.is_empty() {
-                let hint = if query.is_empty() {
-                    "Type to search for skills..."
-                } else {
-                    "No results found"
-                };
-                lines.push(format!("{S_BAR}  \x1b[2m{hint}\x1b[0m"));
+            if query.is_empty() || query.len() < 2 {
+                lines.push(format!("{DIM}Start typing to search (min 2 chars){RESET}"));
+            } else if results.is_empty() && loading {
+                lines.push(format!("{DIM}Searching...{RESET}"));
+            } else if results.is_empty() {
+                lines.push(format!("{DIM}No skills found{RESET}"));
             } else {
-                let (start, end) = visible_range(results.len(), cursor, max_visible);
-                for (vi, item) in results.iter().enumerate().take(end).skip(start) {
-                    let is_cur = vi == cursor;
-                    let arrow = if is_cur { "\x1b[36m❯\x1b[0m" } else { " " };
-                    let label = if is_cur {
+                let max_show = max_visible.min(results.len());
+                for (i, item) in results.iter().take(max_show).enumerate() {
+                    let is_cur = i == cursor;
+                    let arrow = if is_cur { "\x1b[1m>\x1b[0m" } else { " " };
+                    let name = if is_cur {
                         format!("\x1b[1m{}\x1b[0m", item.label)
                     } else {
-                        item.label.clone()
+                        format!("{TEXT}{}{RESET}", item.label)
                     };
-                    let desc = if item.description.is_empty() {
+                    let source = if item.hint.is_empty() {
                         String::new()
                     } else {
-                        format!(" \x1b[2m- {}\x1b[0m", item.description)
+                        format!(" {DIM}{}{RESET}", item.hint)
                     };
-                    lines.push(format!("{S_BAR} {arrow} {label}{desc}"));
-                }
-                let hidden = results.len().saturating_sub(end);
-                if hidden > 0 {
-                    lines.push(format!("{S_BAR}  \x1b[2m↓ {hidden} more\x1b[0m"));
+                    let badge = if item.description.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" \x1b[36m{}\x1b[0m", item.description)
+                    };
+                    let loading_mark = if loading && i == 0 {
+                        format!(" {DIM}...{RESET}")
+                    } else {
+                        String::new()
+                    };
+                    lines.push(format!(" {arrow} {name}{source}{badge}{loading_mark}"));
                 }
             }
 
+            lines.push(String::new());
             lines.push(format!(
-                "{S_BAR}  \x1b[2m{} result(s)\x1b[0m",
-                results.len()
+                "{DIM}up/down navigate | enter select | esc cancel{RESET}"
             ));
-            lines.push("\x1b[2m└\x1b[0m".to_string());
         }
         PromptState::Submit => {
             if let Some(item) = results.get(cursor) {
-                lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", item.label));
+                lines.push(format!("{TEXT}{message}{RESET} {}", item.label));
             }
         }
-        PromptState::Cancel => {
-            lines.push(format!("{S_BAR}  \x1b[9m\x1b[2mCancelled\x1b[0m"));
-        }
+        PromptState::Cancel => {}
     }
 
     lines
@@ -637,6 +640,15 @@ where
     let mut last_input = std::time::Instant::now();
 
     terminal::enable_raw_mode()?;
+    write!(stdout, "\x1b[?25l")?;
+    stdout.flush()?;
+
+    let cleanup = |stdout: &mut io::Stdout| -> io::Result<()> {
+        write!(stdout, "\x1b[?25h")?;
+        stdout.flush()?;
+        terminal::disable_raw_mode()
+    };
+
     render_lines(
         &mut stdout,
         &build_fzf_lines(
@@ -646,6 +658,7 @@ where
             cursor,
             &results,
             max_visible,
+            false,
         ),
         &mut height,
     )?;
@@ -656,16 +669,16 @@ where
             let elapsed = last_input.elapsed().as_millis() as u64;
             let delay = debounce_delay(query.len());
             if elapsed >= delay {
-                // Debounce period elapsed — show loading indicator then execute search.
                 render_lines(
                     &mut stdout,
                     &build_fzf_lines(
                         PromptState::Active,
                         message,
-                        &format!("{query} \x1b[2m...\x1b[0m"),
+                        &query,
                         cursor,
                         &results,
                         max_visible,
+                        true,
                     ),
                     &mut height,
                 )?;
@@ -681,6 +694,7 @@ where
                         cursor,
                         &results,
                         max_visible,
+                        false,
                     ),
                     &mut height,
                 )?;
@@ -704,7 +718,8 @@ where
 
         match code {
             KeyCode::Enter => {
-                if let Some(item) = results.get(cursor) {
+                let max_cur = max_visible.min(results.len());
+                if let Some(item) = results.get(cursor.min(max_cur.saturating_sub(1))) {
                     let value = item.value.clone();
                     render_lines(
                         &mut stdout,
@@ -715,10 +730,11 @@ where
                             cursor,
                             &results,
                             max_visible,
+                            false,
                         ),
                         &mut height,
                     )?;
-                    terminal::disable_raw_mode()?;
+                    cleanup(&mut stdout)?;
                     return Ok(FzfResult::Selected(value));
                 }
             }
@@ -734,15 +750,17 @@ where
                         cursor,
                         &results,
                         max_visible,
+                        false,
                     ),
                     &mut height,
                 )?;
-                terminal::disable_raw_mode()?;
+                cleanup(&mut stdout)?;
                 return Ok(FzfResult::Cancelled);
             }
             KeyCode::Up => cursor = cursor.saturating_sub(1),
             KeyCode::Down if !results.is_empty() => {
-                cursor = (cursor + 1).min(results.len() - 1);
+                let max_cur = max_visible.min(results.len());
+                cursor = (cursor + 1).min(max_cur.saturating_sub(1));
             }
             KeyCode::Backspace => {
                 query.pop();
@@ -767,6 +785,7 @@ where
                     cursor,
                     &results,
                     max_visible,
+                    false,
                 ),
                 &mut height,
             )?;

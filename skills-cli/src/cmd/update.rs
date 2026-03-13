@@ -27,13 +27,13 @@ struct SkippedSkill {
 }
 
 fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
-    if entry.skill_folder_hash.is_empty() && entry.skill_path.is_none() {
-        "No version tracking".to_owned()
-    } else if entry.skill_folder_hash.is_empty() {
-        "No folder hash".to_owned()
-    } else {
-        "No skill path recorded".to_owned()
+    if entry.skill_folder_hash.is_empty() {
+        return "No version hash available".to_owned();
     }
+    if entry.skill_path.is_none() {
+        return "No skill path recorded".to_owned();
+    }
+    "No version tracking".to_owned()
 }
 
 fn print_skipped_skills(skipped: &[SkippedSkill]) {
