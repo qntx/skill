@@ -172,8 +172,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 #[cfg(windows)]
 fn strip_unc_prefix(path: PathBuf) -> PathBuf {
     let s = path.to_string_lossy().into_owned();
-    s.strip_prefix("\\\\?\\")
-        .map_or(path, PathBuf::from)
+    s.strip_prefix("\\\\?\\").map_or(path, PathBuf::from)
 }
 
 #[cfg(not(windows))]

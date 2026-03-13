@@ -48,18 +48,16 @@ pub async fn run(args: ListArgs) -> Result<()> {
         .map(AgentId::new)
         .collect();
 
-    let options = ListOptions {
-        scope,
-        agent_filter,
-        cwd: Some(cwd.clone()),
-    };
-
     let installed = manager
-        .list_installed(&options)
+        .list_installed(&ListOptions {
+            scope,
+            agent_filter,
+            cwd: Some(cwd.clone()),
+        })
         .await
         .map_err(|e| miette::miette!("{e}"))?;
 
-    // JSON mode
+    // JSON mode — raw output, no cliclack framing
     if args.json {
         let json_output: Vec<serde_json::Value> = installed
             .iter()
@@ -86,20 +84,24 @@ pub async fn run(args: ListArgs) -> Result<()> {
 
     let scope_label = if args.global { "Global" } else { "Project" };
 
+    cliclack::intro(style(format!(" {scope_label} Skills ")).on_cyan().black())
+        .into_diagnostic()?;
+
     if installed.is_empty() {
-        println!(
-            "  {}",
-            style(format!("No {scope_label} skills found.")).dim()
-        );
-        if args.global {
-            println!("  {}", style("Try listing project skills without -g").dim());
+        let hint = if args.global {
+            "Try listing project skills without -g"
         } else {
-            println!("  {}", style("Try listing global skills with -g").dim());
-        }
+            "Try listing global skills with -g"
+        };
+        cliclack::outro(format!(
+            "{}  {}",
+            style(format!("No {scope_label} skills found.")).dim(),
+            style(hint).dim()
+        ))
+        .into_diagnostic()?;
         return Ok(());
     }
 
-    // Read lock file to get plugin groupings
     let lock =
         skill::lock::read_skill_lock()
             .await
@@ -110,7 +112,6 @@ pub async fn run(args: ListArgs) -> Result<()> {
                 last_selected_agents: None,
             });
 
-    // Group skills by plugin name
     let mut grouped: BTreeMap<String, Vec<&skill::types::InstalledSkill>> = BTreeMap::new();
     for s in &installed {
         let plugin = lock
@@ -121,13 +122,9 @@ pub async fn run(args: ListArgs) -> Result<()> {
         grouped.entry(plugin).or_default().push(s);
     }
 
-    println!();
-    println!("  {}", style(format!("{scope_label} Skills")).bold());
-    println!();
-
     for (plugin, skills) in &grouped {
         if !plugin.is_empty() {
-            println!("  {} {}", style("▸").dim(), style(plugin).bold());
+            cliclack::log::info(format!("▸ {plugin}")).into_diagnostic()?;
         }
 
         for skill_item in skills {
@@ -144,16 +141,19 @@ pub async fn run(args: ListArgs) -> Result<()> {
                 ui::format_list(&agent_names)
             };
 
-            let indent = if plugin.is_empty() { "  " } else { "    " };
-            println!(
-                "{indent}{} {}",
+            cliclack::log::success(format!(
+                "{} {}  agents: {agent_info}",
                 style(&skill_item.name).cyan(),
                 style(&short_path).dim()
-            );
-            println!("{indent}  {} {agent_info}", style("agents:").dim());
+            ))
+            .into_diagnostic()?;
         }
     }
 
-    println!();
+    cliclack::outro(format!(
+        "{} skill(s) installed",
+        style(installed.len()).green()
+    ))
+    .into_diagnostic()?;
     Ok(())
 }

@@ -1,21 +1,18 @@
-//! Shared UI helpers for the Skills CLI.
+//! Shared UI primitives for the Skills CLI.
 //!
-//! Centralises colour styles, the ASCII logo, formatting utilities, and
-//! custom interactive prompt components (search-multiselect, fzf search)
-//! so that every subcommand produces a consistent visual experience
-//! matching the official `TypeScript` `@clack/prompts` aesthetic.
+//! Provides the ASCII logo, formatting utilities, and custom interactive
+//! prompt components (search-multiselect, fzf search) that give every
+//! subcommand a consistent visual experience.
 
 use std::collections::HashSet;
 use std::io::{self, Write};
 
+use console::style;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     terminal,
 };
 
-// ── ANSI Constants (matching TS cli.ts) ──────────────────────────────
-
-/// ANSI logo lines for the skills banner.
 const LOGO_LINES: &[&str] = &[
     "███████╗██╗  ██╗██╗██╗     ██╗     ███████╗",
     "██╔════╝██║ ██╔╝██║██║     ██║     ██╔════╝",
@@ -25,7 +22,6 @@ const LOGO_LINES: &[&str] = &[
     "╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚══════╝",
 ];
 
-/// 256-color middle grays – visible on both light and dark backgrounds.
 const GRAYS: &[&str] = &[
     "\x1b[38;5;250m",
     "\x1b[38;5;248m",
@@ -39,22 +35,31 @@ const RESET: &str = "\x1b[0m";
 const DIM: &str = "\x1b[38;5;102m";
 const TEXT: &str = "\x1b[38;5;145m";
 
-// ── Clack-style symbols (matching TS @clack/prompts) ─────────────────
-
 const S_STEP_ACTIVE: &str = "\x1b[32m◆\x1b[0m";
 const S_STEP_SUBMIT: &str = "\x1b[32m◇\x1b[0m";
 const S_STEP_CANCEL: &str = "\x1b[31m■\x1b[0m";
 const S_RADIO_ACTIVE: &str = "\x1b[32m●\x1b[0m";
 const S_RADIO_INACTIVE: &str = "\x1b[2m○\x1b[0m";
-#[allow(dead_code)]
-const S_CHECKBOX_ACTIVE: &str = "\x1b[32m◻\x1b[0m";
-#[allow(dead_code)]
-const S_CHECKBOX_INACTIVE: &str = "\x1b[2m◻\x1b[0m";
 const S_BULLET: &str = "\x1b[32m•\x1b[0m";
 const S_BAR: &str = "\x1b[2m│\x1b[0m";
 const S_BAR_H: &str = "\x1b[2m─\x1b[0m";
 
-// ── Logo & Banner ────────────────────────────────────────────────────
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PromptState {
+    Active,
+    Submit,
+    Cancel,
+}
+
+impl PromptState {
+    const fn icon(self) -> &'static str {
+        match self {
+            Self::Active => S_STEP_ACTIVE,
+            Self::Submit => S_STEP_SUBMIT,
+            Self::Cancel => S_STEP_CANCEL,
+        }
+    }
+}
 
 /// Print the SKILLS ASCII logo with a gradient effect.
 pub fn show_logo() {
@@ -65,11 +70,11 @@ pub fn show_logo() {
     }
 }
 
-/// Print the full banner (logo + usage hints).
-pub fn show_banner(_version: &str) {
+/// Print the full banner (logo + version + usage hints).
+pub fn show_banner(version: &str) {
     show_logo();
     println!();
-    println!("{DIM}The open agent skills ecosystem{RESET}");
+    println!("{DIM}The open agent skills ecosystem  v{version}{RESET}");
     println!();
     println!(
         "  {DIM}${RESET} {TEXT}skills add {DIM}<package>{RESET}        {DIM}Add a new skill{RESET}"
@@ -107,8 +112,6 @@ pub fn show_banner(_version: &str) {
     println!();
 }
 
-// ── Path & Formatting Utilities ──────────────────────────────────────
-
 /// Shorten a path for display by replacing the home directory with `~`.
 #[must_use]
 pub fn shorten_path(path: &std::path::Path) -> String {
@@ -120,7 +123,7 @@ pub fn shorten_path(path: &std::path::Path) -> String {
     path.display().to_string()
 }
 
-/// Format a list of items as a comma-separated string suitable for display.
+/// Format items as `"a, b and c"`.
 #[must_use]
 pub fn format_list(items: &[String]) -> String {
     match items.len() {
@@ -134,74 +137,37 @@ pub fn format_list(items: &[String]) -> String {
     }
 }
 
-// ── Styled Output Helpers ────────────────────────────────────────────
-
-/// Print a styled note box (header + body) matching clack's `p.note()`.
-#[allow(dead_code)]
-pub fn print_note(header: &str, body: &str) {
-    use console::style;
-    println!();
-    println!("  {}", style(header).bold());
-    for line in body.lines() {
-        println!("  {}", style(line).dim());
-    }
-    println!();
-}
-
-/// Styled heading for section output.
-#[allow(dead_code)]
-pub fn print_heading(text: &str) {
-    use console::style;
-    println!("  {}", style(text).bold());
-}
-
-/// Styled dim text.
-#[allow(dead_code)]
-pub fn print_dim(text: &str) {
-    use console::style;
-    println!("  {}", style(text).dim());
-}
-
 /// Print a success line with green check mark.
 pub fn print_success(text: &str) {
-    use console::style;
     println!("  {} {text}", style("✓").green());
-}
-
-/// Print a warning line with yellow marker.
-#[allow(dead_code)]
-pub fn print_warning(text: &str) {
-    use console::style;
-    println!("  {} {text}", style("⚠").yellow());
 }
 
 /// Print an error line with red marker.
 pub fn print_error(text: &str) {
-    use console::style;
     println!("  {} {text}", style("✗").red());
 }
 
-/// Print a cyan info bullet.
-#[allow(dead_code)]
-pub fn print_info(label: &str, value: &str) {
-    use console::style;
-    println!("    {} {}", style(label).cyan(), value);
+/// Clear `height` previously rendered lines, leaving the cursor at the top.
+fn clear_rendered(stdout: &mut io::Stdout, height: u16) -> io::Result<()> {
+    if height > 0 {
+        write!(stdout, "\x1b[{height}A")?;
+        for _ in 0..height {
+            write!(stdout, "\x1b[2K\x1b[1B")?;
+        }
+        write!(stdout, "\x1b[{height}A")?;
+    }
+    Ok(())
 }
 
-/// Print a dim source line.
-#[allow(dead_code)]
-pub fn print_source(source: &str) {
-    use console::style;
-    println!("      {}", style(format!("source: {source}")).dim());
+/// Write `lines` to stdout and update `height` for later clearing.
+fn render_lines(stdout: &mut io::Stdout, lines: &[String], height: &mut u16) -> io::Result<()> {
+    clear_rendered(stdout, *height)?;
+    for line in lines {
+        write!(stdout, "\x1b[2K{line}\r\n")?;
+    }
+    *height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    stdout.flush()
 }
-
-// ── Search Multiselect Component ─────────────────────────────────────
-//
-// A raw-terminal interactive prompt matching the TS `search-multiselect.ts`:
-// - Locked section (always-selected items displayed above)
-// - Fuzzy search filtering
-// - Up/Down navigation, Space toggle, Enter confirm, Esc cancel
-// - Scrollable viewport with overflow indicators
 
 /// A single selectable item.
 #[derive(Clone)]
@@ -246,65 +212,76 @@ pub enum SearchMultiselectResult {
     Cancelled,
 }
 
-/// Run the interactive search multiselect prompt.
-///
-/// # Errors
-///
-/// Returns an error if terminal raw mode or I/O operations fail.
-#[allow(clippy::cognitive_complexity)]
-pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchMultiselectResult> {
-    let mut stdout = io::stdout();
-    let mut query = String::new();
-    let mut cursor_pos: usize = 0;
-    let mut selected: HashSet<String> = opts.initial_selected.iter().cloned().collect();
-    let max_visible = opts.max_visible;
+fn matches_query(item: &SearchItem, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let lq = query.to_lowercase();
+    item.label.to_lowercase().contains(&lq) || item.value.to_lowercase().contains(&lq)
+}
 
-    let locked_values: Vec<String> = opts
-        .locked_section
-        .as_ref()
-        .map(|ls| ls.items.iter().map(|i| i.value.clone()).collect())
-        .unwrap_or_default();
+fn filtered_indices(items: &[SearchItem], query: &str) -> Vec<usize> {
+    items
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| matches_query(item, query))
+        .map(|(i, _)| i)
+        .collect()
+}
 
-    let filter = |item: &SearchItem, q: &str| -> bool {
-        if q.is_empty() {
-            return true;
-        }
-        let lq = q.to_lowercase();
-        item.label.to_lowercase().contains(&lq) || item.value.to_lowercase().contains(&lq)
-    };
+fn visible_range(total: usize, cursor: usize, max_vis: usize) -> (usize, usize) {
+    if total <= max_vis {
+        return (0, total);
+    }
+    let start = cursor
+        .saturating_sub(max_vis / 2)
+        .min(total.saturating_sub(max_vis));
+    (start, total.min(start + max_vis))
+}
 
-    let get_filtered = |items: &[SearchItem], q: &str| -> Vec<usize> {
+fn collect_labels<'a>(
+    locked: Option<&'a LockedSection>,
+    items: &'a [SearchItem],
+    selected: &HashSet<String>,
+) -> Vec<&'a str> {
+    let mut labels: Vec<&str> = Vec::new();
+    if let Some(ls) = locked {
+        labels.extend(ls.items.iter().map(|i| i.label.as_str()));
+    }
+    labels.extend(
         items
             .iter()
-            .enumerate()
-            .filter(|(_, item)| filter(item, q))
-            .map(|(i, _)| i)
-            .collect()
-    };
+            .filter(|i| selected.contains(&i.value))
+            .map(|i| i.label.as_str()),
+    );
+    labels
+}
 
-    // Build render lines for a given state
-    let build_lines = |state: &str,
-                       query: &str,
-                       cursor_pos: usize,
-                       selected: &HashSet<String>,
-                       items: &[SearchItem],
-                       locked: &Option<LockedSection>,
-                       _locked_values: &[String],
-                       max_vis: usize|
-     -> Vec<String> {
-        let filtered = get_filtered(items, query);
-        let mut lines = Vec::new();
+fn format_summary(labels: &[&str]) -> String {
+    if labels.is_empty() {
+        return "(none)".to_owned();
+    }
+    if labels.len() <= 3 {
+        return labels.join(", ");
+    }
+    format!("{} +{} more", labels[..3].join(", "), labels.len() - 3)
+}
 
-        // Header
-        let icon = match state {
-            "submit" => S_STEP_SUBMIT,
-            "cancel" => S_STEP_CANCEL,
-            _ => S_STEP_ACTIVE,
-        };
-        lines.push(format!("{icon}  \x1b[1m{}\x1b[0m", opts.message));
+fn build_multiselect_lines(
+    state: PromptState,
+    message: &str,
+    query: &str,
+    cursor: usize,
+    selected: &HashSet<String>,
+    items: &[SearchItem],
+    locked: Option<&LockedSection>,
+    max_vis: usize,
+) -> Vec<String> {
+    let filtered = filtered_indices(items, query);
+    let mut lines = vec![format!("{}  \x1b[1m{message}\x1b[0m", state.icon())];
 
-        if state == "active" {
-            // Locked section
+    match state {
+        PromptState::Active => {
             if let Some(ls) = locked
                 && !ls.items.is_empty()
             {
@@ -327,45 +304,27 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                 ));
             }
 
-            // Search input
             lines.push(format!(
                 "{S_BAR}  \x1b[2mSearch:\x1b[0m {query}\x1b[7m \x1b[0m"
             ));
-            // Hint
             lines.push(format!(
                 "{S_BAR}  \x1b[2m↑↓ move, space select, enter confirm\x1b[0m"
             ));
             lines.push(S_BAR.to_string());
 
-            // Items
             if filtered.is_empty() {
                 lines.push(format!("{S_BAR}  \x1b[2mNo matches found\x1b[0m"));
             } else {
-                let visible_start = if filtered.len() <= max_vis {
-                    0
-                } else {
-                    cursor_pos
-                        .saturating_sub(max_vis / 2)
-                        .min(filtered.len().saturating_sub(max_vis))
-                };
-                let visible_end = filtered.len().min(visible_start + max_vis);
-
-                for (vi, &idx) in filtered
-                    .iter()
-                    .enumerate()
-                    .take(visible_end)
-                    .skip(visible_start)
-                {
+                let (start, end) = visible_range(filtered.len(), cursor, max_vis);
+                for (vi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
                     let item = &items[idx];
-                    let is_selected = selected.contains(&item.value);
-                    let is_cursor = vi == cursor_pos;
-
-                    let radio = if is_selected {
+                    let is_cur = vi == cursor;
+                    let radio = if selected.contains(&item.value) {
                         S_RADIO_ACTIVE
                     } else {
                         S_RADIO_INACTIVE
                     };
-                    let label = if is_cursor {
+                    let label = if is_cur {
                         format!("\x1b[4m{}\x1b[0m", item.label)
                     } else {
                         item.label.clone()
@@ -373,16 +332,13 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                     let hint = item
                         .hint
                         .as_ref()
-                        .map(|h| format!(" \x1b[2m({h})\x1b[0m"))
-                        .unwrap_or_default();
-                    let prefix = if is_cursor { "\x1b[36m❯\x1b[0m" } else { " " };
-
-                    lines.push(format!("{S_BAR} {prefix} {radio} {label}{hint}"));
+                        .map_or(String::new(), |h| format!(" \x1b[2m({h})\x1b[0m"));
+                    let arrow = if is_cur { "\x1b[36m❯\x1b[0m" } else { " " };
+                    lines.push(format!("{S_BAR} {arrow} {radio} {label}{hint}"));
                 }
 
-                // Overflow indicators
-                let hidden_before = visible_start;
-                let hidden_after = filtered.len().saturating_sub(visible_end);
+                let hidden_before = start;
+                let hidden_after = filtered.len().saturating_sub(end);
                 if hidden_before > 0 || hidden_after > 0 {
                     let mut parts = Vec::new();
                     if hidden_before > 0 {
@@ -395,221 +351,169 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                 }
             }
 
-            // Selected summary
             lines.push(S_BAR.to_string());
-            let mut all_labels: Vec<&str> = Vec::new();
-            if let Some(ls) = locked {
-                for item in &ls.items {
-                    all_labels.push(&item.label);
-                }
-            }
-            for item in items {
-                if selected.contains(&item.value) {
-                    all_labels.push(&item.label);
-                }
-            }
-            if all_labels.is_empty() {
+            let labels = collect_labels(locked, items, selected);
+            if labels.is_empty() {
                 lines.push(format!("{S_BAR}  \x1b[2mSelected: (none)\x1b[0m"));
             } else {
-                let summary = if all_labels.len() <= 3 {
-                    all_labels.join(", ")
-                } else {
-                    format!(
-                        "{} +{} more",
-                        all_labels[..3].join(", "),
-                        all_labels.len() - 3
-                    )
-                };
-                lines.push(format!("{S_BAR}  \x1b[32mSelected:\x1b[0m {summary}"));
+                lines.push(format!(
+                    "{S_BAR}  \x1b[32mSelected:\x1b[0m {}",
+                    format_summary(&labels)
+                ));
             }
-
             lines.push("\x1b[2m└\x1b[0m".to_string());
-        } else if state == "submit" {
-            let mut all_labels: Vec<&str> = Vec::new();
-            if let Some(ls) = locked {
-                for item in &ls.items {
-                    all_labels.push(&item.label);
-                }
-            }
-            for item in items {
-                if selected.contains(&item.value) {
-                    all_labels.push(&item.label);
-                }
-            }
-            lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", all_labels.join(", ")));
-        } else if state == "cancel" {
+        }
+        PromptState::Submit => {
+            let labels = collect_labels(locked, items, selected);
+            lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", labels.join(", ")));
+        }
+        PromptState::Cancel => {
             lines.push(format!("{S_BAR}  \x1b[9m\x1b[2mCancelled\x1b[0m"));
         }
+    }
 
-        lines
-    };
+    lines
+}
 
-    // Enable raw mode
-    terminal::enable_raw_mode()?;
+/// Run the interactive search multiselect prompt.
+///
+/// # Errors
+///
+/// Returns an error if terminal raw mode or I/O operations fail.
+pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchMultiselectResult> {
+    let mut stdout = io::stdout();
+    let mut query = String::new();
+    let mut cursor: usize = 0;
+    let mut selected: HashSet<String> = opts.initial_selected.iter().cloned().collect();
+    let mut height: u16 = 0;
 
-    let mut last_height: u16 = 0;
+    let locked_values: Vec<String> = opts
+        .locked_section
+        .as_ref()
+        .map(|ls| ls.items.iter().map(|i| i.value.clone()).collect())
+        .unwrap_or_default();
 
     let render = |stdout: &mut io::Stdout,
-                  state: &str,
+                  state,
                   query: &str,
-                  cursor_pos: usize,
+                  cursor,
                   selected: &HashSet<String>,
-                  last_height: &mut u16|
-     -> io::Result<()> {
-        // Clear previous render
-        if *last_height > 0 {
-            write!(stdout, "\x1b[{}A", *last_height)?;
-            for _ in 0..*last_height {
-                write!(stdout, "\x1b[2K\x1b[1B")?;
-            }
-            write!(stdout, "\x1b[{}A", *last_height)?;
-        }
-
-        let lines = build_lines(
+                  height: &mut u16| {
+        let lines = build_multiselect_lines(
             state,
+            &opts.message,
             query,
-            cursor_pos,
+            cursor,
             selected,
             &opts.items,
-            &opts.locked_section,
-            &locked_values,
-            max_visible,
+            opts.locked_section.as_ref(),
+            opts.max_visible,
         );
-
-        for line in &lines {
-            write!(stdout, "\x1b[2K{line}\r\n")?;
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            *last_height = lines.len() as u16;
-        }
-        stdout.flush()?;
-        Ok(())
+        render_lines(stdout, &lines, height)
     };
 
-    // Initial render
+    terminal::enable_raw_mode()?;
     render(
         &mut stdout,
-        "active",
+        PromptState::Active,
         &query,
-        cursor_pos,
+        cursor,
         &selected,
-        &mut last_height,
+        &mut height,
     )?;
 
     loop {
-        if event::poll(std::time::Duration::from_millis(100))?
-            && let Event::Key(KeyEvent {
-                code, modifiers, ..
-            }) = event::read()?
-        {
-            let filtered = get_filtered(&opts.items, &query);
-
-            match code {
-                KeyCode::Enter => {
-                    if opts.required && selected.is_empty() && locked_values.is_empty() {
-                        continue;
-                    }
-                    render(
-                        &mut stdout,
-                        "submit",
-                        &query,
-                        cursor_pos,
-                        &selected,
-                        &mut last_height,
-                    )?;
-                    terminal::disable_raw_mode()?;
-                    let mut result = locked_values.clone();
-                    // Preserve order from items list
-                    for item in &opts.items {
-                        if selected.contains(&item.value) {
-                            result.push(item.value.clone());
-                        }
-                    }
-                    return Ok(SearchMultiselectResult::Selected(result));
-                }
-                KeyCode::Esc => {
-                    render(
-                        &mut stdout,
-                        "cancel",
-                        &query,
-                        cursor_pos,
-                        &selected,
-                        &mut last_height,
-                    )?;
-                    terminal::disable_raw_mode()?;
-                    return Ok(SearchMultiselectResult::Cancelled);
-                }
-                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    render(
-                        &mut stdout,
-                        "cancel",
-                        &query,
-                        cursor_pos,
-                        &selected,
-                        &mut last_height,
-                    )?;
-                    terminal::disable_raw_mode()?;
-                    return Ok(SearchMultiselectResult::Cancelled);
-                }
-                KeyCode::Up => {
-                    cursor_pos = cursor_pos.saturating_sub(1);
-                }
-                KeyCode::Down => {
-                    if !filtered.is_empty() {
-                        cursor_pos = (cursor_pos + 1).min(filtered.len() - 1);
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    if let Some(&idx) = filtered.get(cursor_pos) {
-                        let val = &opts.items[idx].value;
-                        if selected.contains(val) {
-                            selected.remove(val);
-                        } else {
-                            selected.insert(val.clone());
-                        }
-                    }
-                }
-                KeyCode::Backspace => {
-                    query.pop();
-                    cursor_pos = 0;
-                }
-                KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL) => {
-                    query.push(c);
-                    cursor_pos = 0;
-                }
-                _ => {}
-            }
-
-            render(
-                &mut stdout,
-                "active",
-                &query,
-                cursor_pos,
-                &selected,
-                &mut last_height,
-            )?;
+        if !event::poll(std::time::Duration::from_millis(100))? {
+            continue;
         }
+        let Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) = event::read()?
+        else {
+            continue;
+        };
+
+        let filtered = filtered_indices(&opts.items, &query);
+
+        match code {
+            KeyCode::Enter => {
+                if opts.required && selected.is_empty() && locked_values.is_empty() {
+                    continue;
+                }
+                render(
+                    &mut stdout,
+                    PromptState::Submit,
+                    &query,
+                    cursor,
+                    &selected,
+                    &mut height,
+                )?;
+                terminal::disable_raw_mode()?;
+                let mut result = locked_values;
+                for item in &opts.items {
+                    if selected.contains(&item.value) {
+                        result.push(item.value.clone());
+                    }
+                }
+                return Ok(SearchMultiselectResult::Selected(result));
+            }
+            KeyCode::Esc | KeyCode::Char('c')
+                if code == KeyCode::Esc || modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                render(
+                    &mut stdout,
+                    PromptState::Cancel,
+                    &query,
+                    cursor,
+                    &selected,
+                    &mut height,
+                )?;
+                terminal::disable_raw_mode()?;
+                return Ok(SearchMultiselectResult::Cancelled);
+            }
+            KeyCode::Up => cursor = cursor.saturating_sub(1),
+            KeyCode::Down if !filtered.is_empty() => {
+                cursor = (cursor + 1).min(filtered.len() - 1);
+            }
+            KeyCode::Char(' ') => {
+                if let Some(&idx) = filtered.get(cursor) {
+                    let val = &opts.items[idx].value;
+                    if !selected.remove(val) {
+                        selected.insert(val.clone());
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                query.pop();
+                cursor = 0;
+            }
+            KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                query.push(c);
+                cursor = 0;
+            }
+            _ => {}
+        }
+
+        render(
+            &mut stdout,
+            PromptState::Active,
+            &query,
+            cursor,
+            &selected,
+            &mut height,
+        )?;
     }
 }
-
-// ── FZF-Style Search Prompt ──────────────────────────────────────────
-//
-// Matching the TS `find.ts` `runSearchPrompt` — real-time debounced
-// search with API calls, up/down navigation, and enter to select.
 
 /// A search result item for the fzf prompt.
 #[derive(Clone)]
 pub struct FzfItem {
     /// Display label.
     pub label: String,
-    /// Description shown below label.
+    /// Description shown next to label.
     pub description: String,
     /// Value returned on selection.
     pub value: String,
-    /// Optional hint.
-    #[allow(dead_code)]
-    pub hint: Option<String>,
 }
 
 /// Result of the fzf search prompt.
@@ -618,6 +522,72 @@ pub enum FzfResult {
     Selected(String),
     /// User cancelled.
     Cancelled,
+}
+
+fn build_fzf_lines(
+    state: PromptState,
+    message: &str,
+    query: &str,
+    cursor: usize,
+    results: &[FzfItem],
+    max_visible: usize,
+) -> Vec<String> {
+    let mut lines = vec![format!("{}  \x1b[1m{message}\x1b[0m", state.icon())];
+
+    match state {
+        PromptState::Active => {
+            lines.push(format!(
+                "{S_BAR}  \x1b[2mSearch:\x1b[0m {query}\x1b[7m \x1b[0m"
+            ));
+            lines.push(S_BAR.to_string());
+
+            if results.is_empty() {
+                let hint = if query.is_empty() {
+                    "Type to search for skills..."
+                } else {
+                    "No results found"
+                };
+                lines.push(format!("{S_BAR}  \x1b[2m{hint}\x1b[0m"));
+            } else {
+                let (start, end) = visible_range(results.len(), cursor, max_visible);
+                for (vi, item) in results.iter().enumerate().take(end).skip(start) {
+                    let is_cur = vi == cursor;
+                    let arrow = if is_cur { "\x1b[36m❯\x1b[0m" } else { " " };
+                    let label = if is_cur {
+                        format!("\x1b[1m{}\x1b[0m", item.label)
+                    } else {
+                        item.label.clone()
+                    };
+                    let desc = if item.description.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" \x1b[2m- {}\x1b[0m", item.description)
+                    };
+                    lines.push(format!("{S_BAR} {arrow} {label}{desc}"));
+                }
+                let hidden = results.len().saturating_sub(end);
+                if hidden > 0 {
+                    lines.push(format!("{S_BAR}  \x1b[2m↓ {hidden} more\x1b[0m"));
+                }
+            }
+
+            lines.push(format!(
+                "{S_BAR}  \x1b[2m{} result(s)\x1b[0m",
+                results.len()
+            ));
+            lines.push("\x1b[2m└\x1b[0m".to_string());
+        }
+        PromptState::Submit => {
+            if let Some(item) = results.get(cursor) {
+                lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", item.label));
+            }
+        }
+        PromptState::Cancel => {
+            lines.push(format!("{S_BAR}  \x1b[9m\x1b[2mCancelled\x1b[0m"));
+        }
+    }
+
+    lines
 }
 
 /// Run an interactive fzf-style search prompt.
@@ -633,195 +603,102 @@ where
 {
     let mut stdout = io::stdout();
     let mut query = String::new();
-    let mut cursor_pos: usize = 0;
+    let mut cursor: usize = 0;
     let mut results: Vec<FzfItem> = search_fn("");
     let max_visible: usize = 10;
-    let mut last_height: u16 = 0;
+    let mut height: u16 = 0;
 
     terminal::enable_raw_mode()?;
-
-    let render_fzf = |stdout: &mut io::Stdout,
-                      state: &str,
-                      query: &str,
-                      cursor_pos: usize,
-                      results: &[FzfItem],
-                      last_height: &mut u16|
-     -> io::Result<()> {
-        if *last_height > 0 {
-            write!(stdout, "\x1b[{}A", *last_height)?;
-            for _ in 0..*last_height {
-                write!(stdout, "\x1b[2K\x1b[1B")?;
-            }
-            write!(stdout, "\x1b[{}A", *last_height)?;
-        }
-
-        let mut lines = Vec::new();
-
-        let icon = match state {
-            "submit" => S_STEP_SUBMIT,
-            "cancel" => S_STEP_CANCEL,
-            _ => S_STEP_ACTIVE,
-        };
-        lines.push(format!("{icon}  \x1b[1m{message}\x1b[0m"));
-
-        if state == "active" {
-            lines.push(format!(
-                "{S_BAR}  \x1b[2mSearch:\x1b[0m {query}\x1b[7m \x1b[0m"
-            ));
-            lines.push(S_BAR.to_string());
-
-            if results.is_empty() {
-                if query.is_empty() {
-                    lines.push(format!(
-                        "{S_BAR}  \x1b[2mType to search for skills...\x1b[0m"
-                    ));
-                } else {
-                    lines.push(format!("{S_BAR}  \x1b[2mNo results found\x1b[0m"));
-                }
-            } else {
-                let visible_start = if results.len() <= max_visible {
-                    0
-                } else {
-                    cursor_pos
-                        .saturating_sub(max_visible / 2)
-                        .min(results.len().saturating_sub(max_visible))
-                };
-                let visible_end = results.len().min(visible_start + max_visible);
-
-                for (vi, item) in results
-                    .iter()
-                    .enumerate()
-                    .take(visible_end)
-                    .skip(visible_start)
-                {
-                    let is_cursor = vi == cursor_pos;
-                    let prefix = if is_cursor { "\x1b[36m❯\x1b[0m" } else { " " };
-                    let label = if is_cursor {
-                        format!("\x1b[1m{}\x1b[0m", item.label)
-                    } else {
-                        item.label.clone()
-                    };
-                    let desc = if item.description.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" \x1b[2m- {}\x1b[0m", item.description)
-                    };
-                    lines.push(format!("{S_BAR} {prefix} {label}{desc}"));
-                }
-
-                let hidden_after = results.len().saturating_sub(visible_end);
-                if hidden_after > 0 {
-                    lines.push(format!("{S_BAR}  \x1b[2m↓ {hidden_after} more\x1b[0m"));
-                }
-            }
-
-            lines.push(format!(
-                "{S_BAR}  \x1b[2m{} result(s)\x1b[0m",
-                results.len()
-            ));
-            lines.push("\x1b[2m└\x1b[0m".to_string());
-        } else if state == "submit" {
-            if let Some(item) = results.get(cursor_pos) {
-                lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", item.label));
-            }
-        } else if state == "cancel" {
-            lines.push(format!("{S_BAR}  \x1b[9m\x1b[2mCancelled\x1b[0m"));
-        }
-
-        for line in &lines {
-            write!(stdout, "\x1b[2K{line}\r\n")?;
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            *last_height = lines.len() as u16;
-        }
-        stdout.flush()?;
-        Ok(())
-    };
-
-    render_fzf(
+    render_lines(
         &mut stdout,
-        "active",
-        &query,
-        cursor_pos,
-        &results,
-        &mut last_height,
+        &build_fzf_lines(
+            PromptState::Active,
+            message,
+            &query,
+            cursor,
+            &results,
+            max_visible,
+        ),
+        &mut height,
     )?;
 
     loop {
-        if event::poll(std::time::Duration::from_millis(100))?
-            && let Event::Key(KeyEvent {
-                code, modifiers, ..
-            }) = event::read()?
-        {
-            match code {
-                KeyCode::Enter => {
-                    if let Some(item) = results.get(cursor_pos) {
-                        render_fzf(
-                            &mut stdout,
-                            "submit",
-                            &query,
-                            cursor_pos,
-                            &results,
-                            &mut last_height,
-                        )?;
-                        terminal::disable_raw_mode()?;
-                        return Ok(FzfResult::Selected(item.value.clone()));
-                    }
-                }
-                KeyCode::Esc => {
-                    render_fzf(
-                        &mut stdout,
-                        "cancel",
-                        &query,
-                        cursor_pos,
-                        &results,
-                        &mut last_height,
-                    )?;
-                    terminal::disable_raw_mode()?;
-                    return Ok(FzfResult::Cancelled);
-                }
-                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    render_fzf(
-                        &mut stdout,
-                        "cancel",
-                        &query,
-                        cursor_pos,
-                        &results,
-                        &mut last_height,
-                    )?;
-                    terminal::disable_raw_mode()?;
-                    return Ok(FzfResult::Cancelled);
-                }
-                KeyCode::Up => {
-                    cursor_pos = cursor_pos.saturating_sub(1);
-                }
-                KeyCode::Down => {
-                    if !results.is_empty() {
-                        cursor_pos = (cursor_pos + 1).min(results.len() - 1);
-                    }
-                }
-                KeyCode::Backspace => {
-                    query.pop();
-                    cursor_pos = 0;
-                    results = search_fn(&query);
-                }
-                KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL) => {
-                    query.push(c);
-                    cursor_pos = 0;
-                    results = search_fn(&query);
-                }
-                _ => {}
-            }
-
-            render_fzf(
-                &mut stdout,
-                "active",
-                &query,
-                cursor_pos,
-                &results,
-                &mut last_height,
-            )?;
+        if !event::poll(std::time::Duration::from_millis(100))? {
+            continue;
         }
+        let Event::Key(KeyEvent {
+            code, modifiers, ..
+        }) = event::read()?
+        else {
+            continue;
+        };
+
+        match code {
+            KeyCode::Enter => {
+                if let Some(item) = results.get(cursor) {
+                    let value = item.value.clone();
+                    render_lines(
+                        &mut stdout,
+                        &build_fzf_lines(
+                            PromptState::Submit,
+                            message,
+                            &query,
+                            cursor,
+                            &results,
+                            max_visible,
+                        ),
+                        &mut height,
+                    )?;
+                    terminal::disable_raw_mode()?;
+                    return Ok(FzfResult::Selected(value));
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('c')
+                if code == KeyCode::Esc || modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                render_lines(
+                    &mut stdout,
+                    &build_fzf_lines(
+                        PromptState::Cancel,
+                        message,
+                        &query,
+                        cursor,
+                        &results,
+                        max_visible,
+                    ),
+                    &mut height,
+                )?;
+                terminal::disable_raw_mode()?;
+                return Ok(FzfResult::Cancelled);
+            }
+            KeyCode::Up => cursor = cursor.saturating_sub(1),
+            KeyCode::Down if !results.is_empty() => {
+                cursor = (cursor + 1).min(results.len() - 1);
+            }
+            KeyCode::Backspace => {
+                query.pop();
+                cursor = 0;
+                results = search_fn(&query);
+            }
+            KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                query.push(c);
+                cursor = 0;
+                results = search_fn(&query);
+            }
+            _ => {}
+        }
+
+        render_lines(
+            &mut stdout,
+            &build_fzf_lines(
+                PromptState::Active,
+                message,
+                &query,
+                cursor,
+                &results,
+                max_visible,
+            ),
+            &mut height,
+        )?;
     }
 }

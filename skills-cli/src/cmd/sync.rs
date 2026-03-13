@@ -62,33 +62,40 @@ async fn scan_node_modules(
 
 /// Run the `experimental_sync` command.
 pub async fn run(args: SyncArgs) -> Result<()> {
+    cliclack::intro(style(" skills sync ").on_cyan().black()).into_diagnostic()?;
+
     let cwd = std::env::current_dir().into_diagnostic()?;
     let node_modules = cwd.join("node_modules");
 
     if !node_modules.exists() {
-        println!("  {}", style("No node_modules directory found.").yellow());
+        cliclack::outro("No node_modules directory found.").into_diagnostic()?;
         return Ok(());
     }
 
     let manager = SkillManager::builder().build();
 
-    println!("  Scanning node_modules for skills...");
+    let spinner = cliclack::spinner();
+    spinner.start("Scanning node_modules for skills...");
     let discover_opts = DiscoverOptions::default();
     let all_skills = scan_node_modules(&node_modules, &discover_opts).await;
 
     if all_skills.is_empty() {
-        println!("  {}", style("No skills found in node_modules.").dim());
+        spinner.stop("No skills found in node_modules.");
+        cliclack::outro("Done").into_diagnostic()?;
         return Ok(());
     }
 
-    println!(
-        "  Found {} skill(s) in node_modules",
-        style(all_skills.len()).green()
-    );
+    spinner.stop(format!("Found {} skill(s)", all_skills.len()));
 
-    for s in &all_skills {
-        println!("    {} - {}", style(&s.name).cyan(), s.description);
-    }
+    cliclack::note("Skills found", {
+        use std::fmt::Write;
+        let mut body = String::new();
+        for s in &all_skills {
+            let _ = writeln!(body, "{} - {}", s.name, s.description);
+        }
+        body
+    })
+    .into_diagnostic()?;
 
     if !args.yes {
         let confirmed: bool = cliclack::confirm("Install these skills?")
@@ -97,7 +104,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
             .into_diagnostic()?;
 
         if !confirmed {
-            println!("  {}", style("Sync cancelled").dim());
+            cliclack::outro(style("Sync cancelled").dim()).into_diagnostic()?;
             return Ok(());
         }
     }
@@ -123,6 +130,9 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         }
     };
 
+    let spinner = cliclack::spinner();
+    spinner.start("Syncing skills...");
+
     let opts = InstallOptions {
         scope: InstallScope::Project,
         mode: InstallMode::Symlink,
@@ -135,13 +145,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         }
     }
 
-    println!();
-    println!(
-        "  {} Synced {} skill(s)",
-        style("✓").green(),
-        all_skills.len()
-    );
-    println!();
-
+    spinner.stop(format!("Synced {} skill(s)", all_skills.len()));
+    cliclack::outro(style("Done!").green()).into_diagnostic()?;
     Ok(())
 }

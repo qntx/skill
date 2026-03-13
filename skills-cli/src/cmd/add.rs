@@ -543,18 +543,16 @@ fn show_install_summary(
         let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
         let _ = writeln!(body, "  {}", ui::shorten_path(&canonical));
     }
-    {
-        let _ = write!(body, "\n  agents: {}", ui::format_list(&agent_names));
-        let _ = write!(
-            body,
-            "\n  scope:  {}",
-            if scope == InstallScope::Global {
-                "global"
-            } else {
-                "project"
-            }
-        );
-    }
+    let _ = write!(body, "\n  agents: {}", ui::format_list(&agent_names));
+    let _ = write!(
+        body,
+        "\n  scope:  {}",
+        if scope == InstallScope::Global {
+            "global"
+        } else {
+            "project"
+        }
+    );
 
     let _ = cliclack::note("Installation Summary", body);
 }

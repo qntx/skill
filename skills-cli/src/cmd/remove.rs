@@ -79,6 +79,8 @@ async fn scan_installed_skills(
 
 /// Run the remove command.
 pub async fn run(args: RemoveArgs) -> Result<()> {
+    cliclack::intro(style(" skills remove ").on_cyan().black()).into_diagnostic()?;
+
     let manager = SkillManager::builder().build();
     let scope = if args.global {
         InstallScope::Global
@@ -89,16 +91,13 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
     let installed = scan_installed_skills(&manager, scope, args.global, &cwd).await;
 
     if installed.is_empty() {
-        println!("  {}", style("No skills found to remove.").yellow());
+        cliclack::outro("No skills found to remove.").into_diagnostic()?;
         return Ok(());
     }
 
-    println!(
-        "  Found {} installed skill(s)",
-        style(installed.len()).green()
-    );
+    cliclack::log::info(format!("Found {} installed skill(s)", installed.len()))
+        .into_diagnostic()?;
 
-    // Select skills to remove
     let selected: Vec<String> = if args.all {
         installed.clone()
     } else if !args.skills.is_empty() {
@@ -114,31 +113,16 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
             prompt = prompt.item(s.clone(), s, "");
         }
         prompt = prompt.required(true);
-        let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
-
-        if selected_names.is_empty() {
-            println!("  {}", style("No skills selected").dim());
-            return Ok(());
-        }
-
-        selected_names
+        prompt.interact().into_diagnostic()?
     };
 
     if selected.is_empty() {
-        return Err(miette!(
-            "No matching skills found for: {}",
-            args.skills.join(", ")
-        ));
+        cliclack::outro(style("No matching skills found").dim()).into_diagnostic()?;
+        return Ok(());
     }
 
-    // Confirmation
     if !args.yes && !args.all {
-        println!();
-        println!("  Skills to remove:");
-        for s in &selected {
-            println!("    {} {s}", style("•").red());
-        }
-        println!();
+        cliclack::note("Skills to remove", selected.join("\n")).into_diagnostic()?;
 
         let confirmed: bool = cliclack::confirm(format!(
             "Are you sure you want to uninstall {} skill(s)?",
@@ -149,7 +133,7 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         .into_diagnostic()?;
 
         if !confirmed {
-            println!("  {}", style("Removal cancelled").dim());
+            cliclack::outro(style("Removal cancelled").dim()).into_diagnostic()?;
             return Ok(());
         }
     }
@@ -165,44 +149,39 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         },
     );
 
-    let remove_opts = RemoveOptions {
-        scope,
-        agents: target_agents,
-        cwd: Some(cwd),
-    };
+    let spinner = cliclack::spinner();
+    spinner.start("Removing skills...");
 
     let results = manager
-        .remove_skills(&selected, &remove_opts)
+        .remove_skills(
+            &selected,
+            &RemoveOptions {
+                scope,
+                agents: target_agents,
+                cwd: Some(cwd),
+            },
+        )
         .await
         .map_err(|e| miette!("{e}"))?;
 
     let success_count = results.iter().filter(|r| r.success).count();
     let fail_count = results.iter().filter(|r| !r.success).count();
+    spinner.stop("Removal complete");
 
     if success_count > 0 {
-        println!(
-            "  {} Successfully removed {} skill(s)",
-            style("✓").green(),
-            success_count
-        );
+        cliclack::log::success(format!("Removed {success_count} skill(s)")).into_diagnostic()?;
     }
     if fail_count > 0 {
-        eprintln!(
-            "  {} Failed to remove {} skill(s)",
-            style("✗").red(),
-            fail_count
-        );
+        cliclack::log::error(format!("Failed to remove {fail_count} skill(s)"))
+            .into_diagnostic()?;
     }
 
-    // Remove from global lock
     if args.global {
         for name in &selected {
             let _ = skill::lock::remove_skill_from_lock(name).await;
         }
     }
 
-    println!();
-    println!("  {}", style("Done!").green());
-
+    cliclack::outro(style("Done!").green()).into_diagnostic()?;
     Ok(())
 }

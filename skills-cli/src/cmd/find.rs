@@ -81,9 +81,27 @@ fn search_api_sync(query: &str) -> Vec<SearchSkill> {
         .unwrap_or_default()
 }
 
+fn to_fzf_items(skills: &[SearchSkill]) -> Vec<ui::FzfItem> {
+    skills
+        .iter()
+        .map(|s| {
+            let pkg = if s.source.is_empty() {
+                &s.slug
+            } else {
+                &s.source
+            };
+            let label = format!("{pkg}@{}", s.name);
+            ui::FzfItem {
+                description: format_installs(s.installs),
+                value: label.clone(),
+                label,
+            }
+        })
+        .collect()
+}
+
 /// Run interactive fzf search.
 fn run_interactive() -> Result<Option<String>> {
-    // Cache to avoid repeated API calls for the same query
     let cache: Arc<Mutex<HashMap<String, Vec<SearchSkill>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let cache_ref = Arc::clone(&cache);
@@ -92,56 +110,11 @@ fn run_interactive() -> Result<Option<String>> {
             return Vec::new();
         }
 
-        // Check cache first
-        {
-            let cache_lock = cache_ref.lock().expect("cache lock");
-            if let Some(cached) = cache_lock.get(query) {
-                return cached
-                    .iter()
-                    .map(|s| {
-                        let pkg = if s.source.is_empty() {
-                            &s.slug
-                        } else {
-                            &s.source
-                        };
-                        let installs = format_installs(s.installs);
-                        ui::FzfItem {
-                            label: format!("{pkg}@{}", s.name),
-                            description: installs,
-                            value: format!("{pkg}@{}", s.name),
-                            hint: Some(format!("https://skills.sh/{}", s.slug)),
-                        }
-                    })
-                    .collect();
-            }
-        }
-
-        // Perform blocking search
-        let results = search_api_sync(query);
-
-        // Cache results
-        {
-            let mut cache_lock = cache_ref.lock().expect("cache lock");
-            cache_lock.insert(query.to_owned(), results.clone());
-        }
-
-        results
-            .iter()
-            .map(|s| {
-                let pkg = if s.source.is_empty() {
-                    &s.slug
-                } else {
-                    &s.source
-                };
-                let installs = format_installs(s.installs);
-                ui::FzfItem {
-                    label: format!("{pkg}@{}", s.name),
-                    description: installs,
-                    value: format!("{pkg}@{}", s.name),
-                    hint: Some(format!("https://skills.sh/{}", s.slug)),
-                }
-            })
-            .collect()
+        let mut lock = cache_ref.lock().expect("cache lock");
+        let skills = lock
+            .entry(query.to_owned())
+            .or_insert_with(|| search_api_sync(query));
+        to_fzf_items(skills)
     })
     .into_diagnostic()?;
 
