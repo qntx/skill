@@ -375,9 +375,9 @@ mod tests {
 
     #[test]
     fn test_github_shorthand() {
-        let p = parse_source("vercel-labs/agent-skills");
+        let p = parse_source("qntx/skills");
         assert_eq!(p.source_type, SourceType::Github);
-        assert_eq!(p.url, "https://github.com/vercel-labs/agent-skills.git");
+        assert_eq!(p.url, "https://github.com/qntx/skills.git");
     }
 
     #[test]

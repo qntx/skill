@@ -89,7 +89,7 @@ fn show_missing_source_error() -> ! {
     eprintln!(
         "    {} {}",
         style("skills add").cyan(),
-        style("vercel-labs/agent-skills").yellow()
+        style("qntx/skills").yellow()
     );
     eprintln!();
     std::process::exit(1);

@@ -67,7 +67,7 @@ pub fn show_banner(version: &str) {
         "  {DIM}${RESET} {TEXT}skills init {DIM}[name]{RESET}          {DIM}Create a new skill{RESET}"
     );
     println!();
-    println!("{DIM}try:{RESET} skills add vercel-labs/agent-skills");
+    println!("{DIM}try:{RESET} skills add qntx/skills");
     println!();
     println!("Discover more skills at {TEXT}https://skills.sh/{RESET}");
     println!();

@@ -10,7 +10,7 @@
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 A drop-in, feature-equivalent Rust replacement for the
-[Vercel `skills` CLI](https://github.com/vercel-labs/agent-skills).
+[Vercel `skills` CLI](https://github.com/vercel-labs/skills).
 Single static binary, zero runtime dependencies, full API compatibility.
 
 </div>
@@ -62,7 +62,7 @@ irm https://sh.qntx.fun/skill/ps | iex
 
 ```bash
 # Add skills from a GitHub repo
-skills add vercel-labs/agent-skills
+skills add qntx/skills
 
 # Add a specific skill for all agents, non-interactively
 skills add owner/repo --skill '*' --agent '*' -y
@@ -270,7 +270,7 @@ The CLI binary enables both flags. Library consumers can opt in selectively.
 ## Compatibility
 
 This project is a **drop-in replacement** for the
-[Vercel `skills` CLI](https://github.com/vercel-labs/agent-skills) (`npx skills`).
+[Vercel `skills` CLI](https://github.com/vercel-labs/skills) (`npx skills`).
 
 - Same CLI interface, flags, and aliases
 - Same `SKILL.md` format and YAML frontmatter schema
