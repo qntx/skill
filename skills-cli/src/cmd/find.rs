@@ -237,7 +237,7 @@ pub async fn run(args: FindArgs) -> Result<()> {
             return Ok(());
         }
 
-        println!("{DIM}Install with{RESET} skills add <owner/repo@skill>");
+        println!("{DIM}Install with{RESET} npx skills add <owner/repo@skill>");
         println!();
 
         for skill in data.skills.iter().take(6) {
@@ -293,7 +293,7 @@ pub async fn run(args: FindArgs) -> Result<()> {
 
     // Build add args: skills add <pkg> --skill <name>
     let add_args = super::add::AddArgs {
-        source: Some(pkg.clone()),
+        source: vec![pkg.clone()],
         global: false,
         agent: None,
         skill: Some(vec![skill_name.clone()]),

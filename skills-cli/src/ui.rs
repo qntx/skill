@@ -76,36 +76,36 @@ pub fn show_banner(_version: &str) {
     println!("{DIM}The open agent skills ecosystem{RESET}");
     println!();
     println!(
-        "  {DIM}${RESET} {TEXT}skills add {DIM}<package>{RESET}        {DIM}Add a new skill{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills add {DIM}<package>{RESET}    {DIM}Add a new skill{RESET}"
     );
     println!(
-        "  {DIM}${RESET} {TEXT}skills remove{RESET}               {DIM}Remove installed skills{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills remove{RESET}           {DIM}Remove installed skills{RESET}"
     );
     println!(
-        "  {DIM}${RESET} {TEXT}skills list{RESET}                 {DIM}List installed skills{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills list{RESET}             {DIM}List installed skills{RESET}"
     );
     println!(
-        "  {DIM}${RESET} {TEXT}skills find {DIM}[query]{RESET}         {DIM}Search for skills{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills find {DIM}[query]{RESET}     {DIM}Search for skills{RESET}"
     );
     println!();
     println!(
-        "  {DIM}${RESET} {TEXT}skills check{RESET}                {DIM}Check for updates{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills check{RESET}            {DIM}Check for updates{RESET}"
     );
     println!(
-        "  {DIM}${RESET} {TEXT}skills update{RESET}               {DIM}Update all skills{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills update{RESET}           {DIM}Update all skills{RESET}"
     );
     println!();
     println!(
-        "  {DIM}${RESET} {TEXT}skills experimental_install{RESET} {DIM}Restore from skills-lock.json{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills experimental_install{RESET} {DIM}Restore from skills-lock.json{RESET}"
     );
     println!(
-        "  {DIM}${RESET} {TEXT}skills init {DIM}[name]{RESET}          {DIM}Create a new skill{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills init {DIM}[name]{RESET}      {DIM}Create a new skill{RESET}"
     );
     println!(
-        "  {DIM}${RESET} {TEXT}skills experimental_sync{RESET}    {DIM}Sync skills from node_modules{RESET}"
+        "  {DIM}${RESET} {TEXT}npx skills experimental_sync{RESET}    {DIM}Sync skills from node_modules{RESET}"
     );
     println!();
-    println!("{DIM}try:{RESET} skills add vercel-labs/agent-skills");
+    println!("{DIM}try:{RESET} npx skills add vercel-labs/agent-skills");
     println!();
     println!("Discover more skills at {TEXT}https://skills.sh/{RESET}");
     println!();
@@ -114,6 +114,7 @@ pub fn show_banner(_version: &str) {
 /// Shorten a path for display by replacing the home directory with `~`
 /// and the current directory with `.`.
 #[must_use]
+#[allow(dead_code)]
 pub fn shorten_path(path: &std::path::Path) -> String {
     shorten_path_with_cwd(path, &std::env::current_dir().unwrap_or_default())
 }

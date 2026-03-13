@@ -1,11 +1,14 @@
 //! `skills update` command implementation.
 //!
 //! Matches the TS `cli.ts` `runUpdate` UX: plain console output with ANSI
-//! colors, skipped skills handling.
+//! colors, skipped skills handling.  Uses internal `run_add` instead of
+//! spawning a subprocess for cross-platform reliability.
 
 use std::collections::HashMap;
 
 use miette::Result;
+
+use super::add::RunAddOptions;
 
 const DIM: &str = "\x1b[38;5;102m";
 const TEXT: &str = "\x1b[38;5;145m";
@@ -15,6 +18,28 @@ struct UpdateEntry {
     name: String,
     source_url: String,
     skill_path: Option<String>,
+}
+
+/// Build the install URL from source_url + skill_path (matches TS logic).
+fn build_install_url(source_url: &str, skill_path: Option<&str>) -> String {
+    let Some(sp) = skill_path else {
+        return source_url.to_owned();
+    };
+
+    let mut folder = sp.to_owned();
+    if folder.ends_with("/SKILL.md") {
+        folder.truncate(folder.len() - 9);
+    } else if folder.ends_with("SKILL.md") {
+        folder.truncate(folder.len() - 8);
+    }
+    let folder = folder.trim_end_matches('/');
+
+    if folder.is_empty() {
+        return source_url.to_owned();
+    }
+
+    let base = source_url.trim_end_matches(".git").trim_end_matches('/');
+    format!("{base}/tree/main/{folder}")
 }
 
 /// Run the update command.
@@ -28,7 +53,7 @@ pub async fn run() -> Result<()> {
 
     if lock.skills.is_empty() {
         println!("{DIM}No skills tracked in lock file.{RESET}");
-        println!("{DIM}Install skills with{RESET} {TEXT}skills add <package>{RESET}");
+        println!("{DIM}Install skills with{RESET} {TEXT}npx skills add <package>{RESET}");
         return Ok(());
     }
 
@@ -77,36 +102,26 @@ pub async fn run() -> Result<()> {
     for update in &updates {
         println!("{TEXT}Updating {}...{RESET}", update.name);
 
-        let mut install_url = update.source_url.clone();
-        if let Some(ref sp) = update.skill_path {
-            let mut folder = sp.clone();
-            if folder.ends_with("/SKILL.md") {
-                folder = folder[..folder.len() - 9].to_owned();
-            } else if folder.ends_with("SKILL.md") {
-                folder = folder[..folder.len() - 8].to_owned();
-            }
-            folder = folder.trim_end_matches('/').to_owned();
+        let install_url = build_install_url(&update.source_url, update.skill_path.as_deref());
 
-            install_url = install_url
-                .trim_end_matches(".git")
-                .trim_end_matches('/')
-                .to_owned();
-            install_url = format!("{install_url}/tree/main/{folder}");
-        }
+        let result = super::add::run_add(RunAddOptions {
+            source: install_url,
+            global: true,
+            yes: true,
+            skill_filter: Some(vec![update.name.clone()]),
+            agent: None,
+        })
+        .await;
 
-        let output = tokio::process::Command::new("skills")
-            .args(["add", &install_url, "-g", "-y"])
-            .output()
-            .await;
-
-        match output {
-            Ok(o) if o.status.success() => {
+        match result {
+            Ok(()) => {
                 success_count += 1;
                 println!("  {TEXT}✓{RESET} Updated {}", update.name);
             }
-            _ => {
+            Err(e) => {
                 fail_count += 1;
                 println!("  {DIM}✗ Failed to update {}{RESET}", update.name);
+                tracing::warn!(skill = %update.name, error = %e, "update failed");
             }
         }
     }
@@ -119,7 +134,6 @@ pub async fn run() -> Result<()> {
         println!("{DIM}Failed to update {fail_count} skill(s){RESET}");
     }
 
-    // Telemetry
     let mut props = HashMap::new();
     props.insert("skillCount".to_owned(), updates.len().to_string());
     props.insert("successCount".to_owned(), success_count.to_string());

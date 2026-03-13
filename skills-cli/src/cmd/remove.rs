@@ -4,7 +4,7 @@
 //! selection and confirmation, but plain output for results. Shows
 //! per-skill error details on failure.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use clap::Args;
@@ -222,6 +222,34 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         }
     }
 
+    // Telemetry (matches TS remove.ts: group by source).
+    send_remove_telemetry(&selected, args.global).await;
+
     println!();
     Ok(())
+}
+
+async fn send_remove_telemetry(skills: &[String], global: bool) {
+    let lock = skill::lock::read_skill_lock().await.ok();
+
+    // Group removed skills by source for telemetry.
+    let mut by_source: HashMap<String, Vec<String>> = HashMap::new();
+    for name in skills {
+        let source = lock
+            .as_ref()
+            .and_then(|l| l.skills.get(name))
+            .map(|e| e.source.clone())
+            .unwrap_or_else(|| "unknown".to_owned());
+        by_source.entry(source).or_default().push(name.clone());
+    }
+
+    for (source, names) in &by_source {
+        let mut props = HashMap::new();
+        props.insert("source".to_owned(), source.clone());
+        props.insert("skills".to_owned(), names.join(","));
+        if global {
+            props.insert("global".to_owned(), "1".to_owned());
+        }
+        skill::telemetry::track("remove", props);
+    }
 }

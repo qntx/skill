@@ -40,7 +40,7 @@ fn print_skipped_skills(skipped: &[SkippedSkill]) {
     for s in skipped {
         println!("  {TEXT}•{RESET} {} {DIM}({}){RESET}", s.name, s.reason);
         println!(
-            "    {DIM}To update: {TEXT}skills add {} -g -y{RESET}",
+            "    {DIM}To update: {TEXT}npx skills add {} -g -y{RESET}",
             s.source_url
         );
     }
@@ -57,7 +57,7 @@ pub async fn run() -> Result<()> {
 
     if lock.skills.is_empty() {
         println!("{DIM}No skills tracked in lock file.{RESET}");
-        println!("{DIM}Install skills with{RESET} {TEXT}skills add <package>{RESET}");
+        println!("{DIM}Install skills with{RESET} {TEXT}npx skills add <package>{RESET}");
         return Ok(());
     }
 
@@ -110,7 +110,7 @@ pub async fn run() -> Result<()> {
             println!("    {DIM}source: {source}{RESET}");
         }
         println!();
-        println!("{DIM}Run{RESET} {TEXT}skills update{RESET} {DIM}to update all skills{RESET}");
+        println!("{DIM}Run{RESET} {TEXT}npx skills update{RESET} {DIM}to update all skills{RESET}");
     }
 
     if !errors.is_empty() {
