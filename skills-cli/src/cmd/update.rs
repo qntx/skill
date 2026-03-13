@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 
 use console::style;
-use miette::Result;
+use miette::{IntoDiagnostic, Result};
+
+use crate::ui;
 
 struct UpdateEntry {
     name: String,
@@ -13,21 +15,22 @@ struct UpdateEntry {
 
 /// Run the update command.
 pub async fn run() -> Result<()> {
-    println!("  Checking for skill updates...");
-    println!();
+    cliclack::intro(style(" skills update ").on_cyan().black()).into_diagnostic()?;
+
+    let spinner = cliclack::spinner();
+    spinner.start("Checking for updates...");
 
     let lock = skill::lock::read_skill_lock()
         .await
         .map_err(|e| miette::miette!("{e}"))?;
 
     if lock.skills.is_empty() {
-        println!("  {}", style("No skills tracked in lock file.").dim());
-        println!(
-            "  {} {} {}",
-            style("Install skills with").dim(),
-            style("skills add <package>"),
-            style("").dim()
-        );
+        spinner.stop("No skills tracked in lock file.");
+        cliclack::outro(format!(
+            "Install skills with {}",
+            style("skills add <package>").cyan()
+        ))
+        .into_diagnostic()?;
         return Ok(());
     }
 
@@ -53,19 +56,19 @@ pub async fn run() -> Result<()> {
     }
 
     if updates.is_empty() {
-        println!("  {} All skills are up to date", style("✓").green());
-        println!();
+        spinner.stop(format!("{} All skills are up to date", style("✓").green()));
+        cliclack::outro("Done").into_diagnostic()?;
         return Ok(());
     }
 
-    println!("  Found {} update(s)", style(updates.len()).yellow());
-    println!();
+    spinner.stop(format!("Found {} update(s)", style(updates.len()).yellow()));
 
     let mut success_count = 0u32;
     let mut fail_count = 0u32;
 
     for update in &updates {
-        println!("  Updating {}...", update.name);
+        let spinner = cliclack::spinner();
+        spinner.start(format!("Updating {}...", update.name));
 
         let mut install_url = update.source_url.clone();
         if let Some(ref sp) = update.skill_path {
@@ -92,29 +95,24 @@ pub async fn run() -> Result<()> {
         match output {
             Ok(o) if o.status.success() => {
                 success_count += 1;
-                println!("    {} Updated {}", style("✓").green(), update.name);
+                spinner.stop(format!("{} Updated {}", style("✓").green(), update.name));
             }
             _ => {
                 fail_count += 1;
-                println!("    {} Failed to update {}", style("✗").red(), update.name);
+                spinner.stop(format!(
+                    "{} Failed to update {}",
+                    style("✗").red(),
+                    update.name
+                ));
             }
         }
     }
 
-    println!();
     if success_count > 0 {
-        println!(
-            "  {} Updated {} skill(s)",
-            style("✓").green(),
-            success_count
-        );
+        ui::print_success(&format!("Updated {success_count} skill(s)"));
     }
     if fail_count > 0 {
-        println!(
-            "  {} Failed to update {} skill(s)",
-            style("✗").red(),
-            fail_count
-        );
+        ui::print_error(&format!("Failed to update {fail_count} skill(s)"));
     }
 
     // Telemetry
@@ -124,6 +122,6 @@ pub async fn run() -> Result<()> {
     props.insert("failCount".to_owned(), fail_count.to_string());
     skill::telemetry::track("update", props);
 
-    println!();
+    cliclack::outro("Done").into_diagnostic()?;
     Ok(())
 }

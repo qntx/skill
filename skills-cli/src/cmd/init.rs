@@ -13,6 +13,8 @@ pub struct InitArgs {
 
 /// Run the init command.
 pub fn run(args: &InitArgs) -> Result<()> {
+    cliclack::intro(style(" skills init ").on_cyan().black()).into_diagnostic()?;
+
     let cwd = std::env::current_dir().into_diagnostic()?;
     let cwd_name = cwd
         .file_name()
@@ -33,7 +35,11 @@ pub fn run(args: &InitArgs) -> Result<()> {
     };
 
     if skill_file.exists() {
-        println!("  Skill already exists at {}", style(&display_path).dim());
+        cliclack::outro(format!(
+            "Skill already exists at {}",
+            style(&display_path).dim()
+        ))
+        .into_diagnostic()?;
         return Ok(());
     }
 
@@ -65,34 +71,23 @@ Describe when this skill should be used.
 
     std::fs::write(&skill_file, content).into_diagnostic()?;
 
-    println!("  Initialized skill: {}", style(skill_name).dim());
-    println!();
-    println!("  {}:", style("Created").dim());
-    println!("    {display_path}");
-    println!();
-    println!("  {}:", style("Next steps").dim());
-    println!(
-        "    1. Edit {} to define your skill instructions",
-        style(&display_path)
-    );
-    println!(
-        "    2. Update the {} and {} in the frontmatter",
-        style("name"),
-        style("description")
-    );
-    println!();
-    println!("  {}:", style("Publishing").dim());
-    println!(
-        "    {}  Push to a repo, then {}",
-        style("GitHub:").dim(),
-        style("skills add <owner>/<repo>")
-    );
-    println!();
-    println!(
-        "  Browse existing skills for inspiration at {}",
-        style("https://skills.sh/")
-    );
-    println!();
+    cliclack::log::success(format!("Created {display_path}")).into_diagnostic()?;
+
+    cliclack::note(
+        "Next steps",
+        format!(
+            "1. Edit {display_path} to define your skill instructions\n\
+             2. Update the name and description in the frontmatter\n\
+             3. Push to a repo, then run: skills add <owner>/<repo>"
+        ),
+    )
+    .into_diagnostic()?;
+
+    cliclack::outro(format!(
+        "Browse existing skills for inspiration at {}",
+        style("https://skills.sh/").cyan()
+    ))
+    .into_diagnostic()?;
 
     Ok(())
 }

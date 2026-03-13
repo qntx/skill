@@ -5,24 +5,21 @@
 use console::style;
 use miette::{IntoDiagnostic, Result};
 
+use crate::ui;
+
 /// Run the `experimental_install` command.
 pub async fn run() -> Result<()> {
+    cliclack::intro(style(" skills install ").on_cyan().black()).into_diagnostic()?;
+
     let cwd = std::env::current_dir().into_diagnostic()?;
     let lock_path = cwd.join("skills-lock.json");
 
     if !lock_path.exists() {
-        println!();
-        println!(
-            "  {}",
-            style("No skills-lock.json found in current directory.").yellow()
-        );
-        println!(
-            "  {} {} {}",
-            style("Install skills with").dim(),
-            style("skills add <package>"),
-            style("to create one.").dim()
-        );
-        println!();
+        cliclack::outro(format!(
+            "No skills-lock.json found. Install skills with {} to create one.",
+            style("skills add <package>").cyan()
+        ))
+        .into_diagnostic()?;
         return Ok(());
     }
 
@@ -31,21 +28,22 @@ pub async fn run() -> Result<()> {
         .map_err(|e| miette::miette!("{e}"))?;
 
     if lock.skills.is_empty() {
-        println!("  {}", style("No skills in lock file.").dim());
+        cliclack::outro("No skills in lock file.").into_diagnostic()?;
         return Ok(());
     }
 
-    println!(
-        "  Restoring {} skill(s) from skills-lock.json...",
+    cliclack::log::info(format!(
+        "Restoring {} skill(s) from skills-lock.json",
         lock.skills.len()
-    );
-    println!();
+    ))
+    .into_diagnostic()?;
 
     let mut success = 0u32;
     let mut failed = 0u32;
 
     for (name, entry) in &lock.skills {
-        println!("  Installing {name} from {}...", entry.source);
+        let spinner = cliclack::spinner();
+        spinner.start(format!("Installing {name} from {}...", entry.source));
 
         let output = tokio::process::Command::new("skills")
             .args(["add", &entry.source, "-y", "--skill", name])
@@ -55,27 +53,22 @@ pub async fn run() -> Result<()> {
         match output {
             Ok(o) if o.status.success() => {
                 success += 1;
-                println!("    {} {name}", style("✓").green());
+                spinner.stop(format!("{} {name}", style("✓").green()));
             }
             _ => {
                 failed += 1;
-                println!("    {} {name}", style("✗").red());
+                spinner.stop(format!("{} {name}", style("✗").red()));
             }
         }
     }
 
-    println!();
     if success > 0 {
-        println!("  {} Restored {} skill(s)", style("✓").green(), success);
+        ui::print_success(&format!("Restored {success} skill(s)"));
     }
     if failed > 0 {
-        println!(
-            "  {} Failed to restore {} skill(s)",
-            style("✗").red(),
-            failed
-        );
+        ui::print_error(&format!("Failed to restore {failed} skill(s)"));
     }
-    println!();
 
+    cliclack::outro("Done").into_diagnostic()?;
     Ok(())
 }

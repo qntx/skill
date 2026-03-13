@@ -60,7 +60,7 @@ pub fn sanitize_name(name: &str) -> String {
 
 /// Validate that `target_path` is within `base_path`.
 fn is_path_safe(base_path: &Path, target_path: &Path) -> bool {
-    normalize_path(target_path).starts_with(&normalize_path(base_path))
+    normalize_path(target_path).starts_with(normalize_path(base_path))
 }
 
 /// Best-effort path normalization for safety checks.
@@ -81,7 +81,7 @@ fn normalize_path(p: &Path) -> PathBuf {
 fn strip_unc_prefix(path: PathBuf) -> PathBuf {
     let s = path.to_string_lossy().into_owned();
     s.strip_prefix("\\\\?\\")
-        .map_or(path, |stripped| PathBuf::from(stripped))
+        .map_or(path, PathBuf::from)
 }
 
 #[cfg(not(windows))]

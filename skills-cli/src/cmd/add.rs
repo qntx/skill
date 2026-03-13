@@ -1,4 +1,8 @@
 //! `skills add <source>` command implementation.
+//!
+//! Matches the `TypeScript` `add.ts` UX: clack-style prompts, interactive
+//! agent selection with search-multiselect, scope/method prompts, and
+//! lock-file integration.
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -6,8 +10,6 @@ use std::path::{Path, PathBuf};
 
 use clap::Args;
 use console::style;
-use dialoguer::{Confirm, MultiSelect};
-use indicatif::{ProgressBar, ProgressStyle};
 use miette::{IntoDiagnostic, Result, miette};
 
 use skill::SkillManager;
@@ -56,19 +58,6 @@ pub struct AddArgs {
     pub full_depth: bool,
 }
 
-#[allow(clippy::literal_string_with_formatting_args)]
-fn make_spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .expect("valid template"),
-    );
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
-    pb.set_message(msg.to_owned());
-    pb
-}
-
 fn show_missing_source_error() -> ! {
     eprintln!();
     eprintln!(
@@ -95,18 +84,13 @@ fn show_missing_source_error() -> ! {
     std::process::exit(1);
 }
 
-/// Select skills to install from the discovered set.
+/// Select skills to install from the discovered set using cliclack multiselect.
 fn select_skills(
     skills: &[Skill],
     skill_filter: Option<&Vec<String>>,
     yes: bool,
 ) -> Result<Vec<Skill>> {
     if skill_filter.is_some_and(|s| s.contains(&"*".to_owned())) {
-        println!(
-            "  {} Installing all {} skills",
-            style("ℹ").blue(),
-            skills.len()
-        );
         return Ok(skills.to_vec());
     }
 
@@ -121,37 +105,33 @@ fn select_skills(
         return Ok(filtered);
     }
 
-    if skills.len() == 1 {
-        println!(
-            "  {} Skill: {}",
-            style("ℹ").blue(),
-            style(&skills[0].name).cyan()
-        );
+    if skills.len() == 1 || yes {
         return Ok(skills.to_vec());
     }
 
-    if yes {
-        return Ok(skills.to_vec());
+    // Interactive multiselect via cliclack
+    let mut prompt = cliclack::multiselect("Select skills to install");
+    for s in skills {
+        prompt = prompt.item(s.name.clone(), &s.name, &s.description);
     }
+    prompt = prompt.required(true);
 
-    let items: Vec<String> = skills
-        .iter()
-        .map(|s| format!("{} - {}", s.name, s.description))
-        .collect();
-    let selections = MultiSelect::new()
-        .with_prompt("Select skills to install (space to toggle)")
-        .items(&items)
-        .interact()
-        .into_diagnostic()?;
-
-    if selections.is_empty() {
+    let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
+    if selected_names.is_empty() {
         return Err(miette!("No skills selected"));
     }
 
-    Ok(selections.iter().map(|&i| skills[i].clone()).collect())
+    Ok(skills
+        .iter()
+        .filter(|s| selected_names.contains(&s.name))
+        .cloned()
+        .collect())
 }
 
-/// Select target agents for installation.
+/// Select target agents using the custom search-multiselect component.
+///
+/// Matches the TS version: universal agents in a locked section,
+/// detected agents pre-selected, search filtering, last-selection memory.
 async fn select_agents(
     manager: &SkillManager,
     agent_arg: Option<&Vec<String>>,
@@ -167,8 +147,9 @@ async fn select_agents(
         return Ok(names.iter().map(AgentId::new).collect());
     }
 
+    let detected = manager.detect_installed_agents().await;
+
     if yes {
-        let detected = manager.detect_installed_agents().await;
         return Ok(if detected.is_empty() {
             all_ids
         } else {
@@ -176,32 +157,79 @@ async fn select_agents(
         });
     }
 
-    let detected = manager.detect_installed_agents().await;
-    if detected.is_empty() || detected.len() > 1 {
-        let items: Vec<String> = all_ids
-            .iter()
-            .map(|id| {
-                manager
-                    .agents()
-                    .get(id)
-                    .map_or_else(|| id.as_str().to_owned(), |c| c.display_name.clone())
+    // Build search-multiselect matching TS search-multiselect.ts
+    let universal = manager.agents().universal_agents();
+    let non_universal = manager.agents().non_universal_agents();
+
+    // Locked section: universal agents
+    let locked = if universal.is_empty() {
+        None
+    } else {
+        Some(ui::LockedSection {
+            title: "Universal agents".to_owned(),
+            items: universal
+                .iter()
+                .filter_map(|id| {
+                    manager.agents().get(id).map(|c| ui::SearchItem {
+                        value: id.as_str().to_owned(),
+                        label: c.display_name.clone(),
+                        hint: None,
+                    })
+                })
+                .collect(),
+        })
+    };
+
+    // Selectable items: non-universal agents
+    let items: Vec<ui::SearchItem> = non_universal
+        .iter()
+        .filter_map(|id| {
+            manager.agents().get(id).map(|c| ui::SearchItem {
+                value: id.as_str().to_owned(),
+                label: c.display_name.clone(),
+                hint: if detected.contains(id) {
+                    Some("detected".to_owned())
+                } else {
+                    None
+                },
             })
-            .collect();
+        })
+        .collect();
 
-        let selections = MultiSelect::new()
-            .with_prompt("Which agents do you want to install to?")
-            .items(&items)
-            .interact()
-            .into_diagnostic()?;
+    // Pre-select detected agents
+    let initial: Vec<String> = detected
+        .iter()
+        .filter(|id| !universal.contains(id))
+        .map(|id| id.as_str().to_owned())
+        .collect();
 
-        if selections.is_empty() {
-            return Err(miette!("No agents selected"));
+    // Check for last selected agents
+    let last_selected = skill::lock::get_last_selected_agents()
+        .await
+        .unwrap_or(None);
+    let initial = last_selected.as_ref().map_or(initial, Clone::clone);
+
+    let result = ui::search_multiselect(&ui::SearchMultiselectOptions {
+        message: "Which agents do you want to install to?".to_owned(),
+        items,
+        max_visible: 8,
+        initial_selected: initial,
+        required: true,
+        locked_section: locked,
+    })
+    .into_diagnostic()?;
+
+    match result {
+        ui::SearchMultiselectResult::Selected(values) => {
+            // Save selection for next time
+            let _ = skill::lock::save_selected_agents(&values).await;
+            Ok(values.into_iter().map(AgentId::new).collect())
         }
-
-        return Ok(selections.iter().map(|&i| all_ids[i].clone()).collect());
+        ui::SearchMultiselectResult::Cancelled => {
+            cliclack::outro("Installation cancelled").into_diagnostic()?;
+            std::process::exit(0);
+        }
     }
-
-    Ok(ensure_universal_agents(manager, detected))
 }
 
 fn ensure_universal_agents(manager: &SkillManager, mut agents: Vec<AgentId>) -> Vec<AgentId> {
@@ -220,7 +248,8 @@ async fn do_install(
     target_agents: &[AgentId],
     install_opts: &InstallOptions,
 ) -> (u32, u32) {
-    let spinner = make_spinner("Installing skills...");
+    let spinner = cliclack::spinner();
+    spinner.start("Installing skills...");
     let mut successes = 0u32;
     let mut failures = 0u32;
 
@@ -253,7 +282,7 @@ async fn do_install(
         }
     }
 
-    spinner.finish_with_message("Installation complete");
+    spinner.stop("Installation complete");
     (successes, failures)
 }
 
@@ -269,37 +298,24 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         args.yes = true;
     }
 
-    ui::show_logo();
+    cliclack::intro(style(" skills add ").on_cyan().black()).into_diagnostic()?;
 
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
 
     // Parse source
-    let spinner = make_spinner("Parsing source...");
+    let spinner = cliclack::spinner();
+    spinner.start("Parsing source...");
     let parsed = manager.parse_source(source);
-    spinner.finish_with_message(format!(
-        "Source: {}{}{}{}",
-        if parsed.source_type == SourceType::Local {
-            parsed
-                .local_path
-                .as_ref()
-                .map_or(String::new(), |p| p.to_string_lossy().into_owned())
-        } else {
-            parsed.url.clone()
-        },
+    let source_display = if parsed.source_type == SourceType::Local {
         parsed
-            .git_ref
+            .local_path
             .as_ref()
-            .map_or(String::new(), |r| format!(" @ {}", style(r).yellow())),
-        parsed
-            .subpath
-            .as_ref()
-            .map_or(String::new(), |s| format!(" ({s})")),
-        parsed
-            .skill_filter
-            .as_ref()
-            .map_or(String::new(), |f| format!(" @{}", style(f).cyan())),
-    ));
+            .map_or(String::new(), |p| p.to_string_lossy().into_owned())
+    } else {
+        parsed.url.clone()
+    };
+    spinner.stop(format!("Source: {source_display}"));
 
     // Merge @skill filter
     if let Some(filter) = &parsed.skill_filter {
@@ -308,10 +324,11 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
 
     // Resolve source to local directory
     let (skills_dir, _temp_dir): (PathBuf, Option<tempfile::TempDir>) =
-        resolve_source(&parsed, &cwd).await?;
+        resolve_source(&parsed).await?;
 
     // Discover skills
-    let spinner = make_spinner("Discovering skills...");
+    let spinner = cliclack::spinner();
+    spinner.start("Discovering skills...");
     let include_internal = args.skill.as_ref().is_some_and(|s| !s.is_empty());
     let discover_opts = DiscoverOptions {
         include_internal,
@@ -323,55 +340,101 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
             .map_err(|e| miette!("{e}"))?;
 
     if skills.is_empty() {
-        spinner.finish_with_message(format!("{}", style("No skills found").red()));
-        return Err(miette!(
-            "No valid skills found. Skills require a SKILL.md with name and description."
-        ));
+        spinner.stop(format!("{}", style("No skills found").red()));
+        cliclack::outro(
+            style("No valid skills found. Skills require a SKILL.md with name and description.")
+                .red(),
+        )
+        .into_diagnostic()?;
+        return Ok(());
     }
-    spinner.finish_with_message(format!(
+    spinner.stop(format!(
         "Found {} skill{}",
-        style(skills.len()).green(),
+        skills.len(),
         if skills.len() > 1 { "s" } else { "" }
     ));
 
     // List mode
     if args.list {
-        println!();
-        println!("  {}", style("Available Skills").bold());
-        for s in &skills {
-            println!("    {}", style(&s.name).cyan());
-            println!("      {}", style(&s.description).dim());
-        }
-        println!();
-        println!("Use --skill <name> to install specific skills");
+        cliclack::note("Available Skills", {
+            let mut body = String::new();
+            for s in &skills {
+                let _ = writeln!(body, "  {} - {}", s.name, s.description);
+            }
+            body.push_str("\nUse --skill <name> to install specific skills");
+            body
+        })
+        .into_diagnostic()?;
+        cliclack::outro("Done").into_diagnostic()?;
         return Ok(());
     }
 
     let selected_skills = select_skills(&skills, args.skill.as_ref(), args.yes)?;
-    let target_agents = select_agents(&manager, args.agent.as_ref(), args.yes).await?;
 
+    // Interactive scope selection (if not specified via flags)
     let scope = if args.global {
         InstallScope::Global
-    } else {
+    } else if args.yes {
         InstallScope::Project
+    } else {
+        let scope_choice: String = cliclack::select("Where should the skills be installed?")
+            .item(
+                String::from("project"),
+                "Project",
+                "Install in the current directory",
+            )
+            .item(
+                String::from("global"),
+                "Global",
+                "Install for all projects (user-level)",
+            )
+            .interact()
+            .into_diagnostic()?;
+        if scope_choice == "global" {
+            InstallScope::Global
+        } else {
+            InstallScope::Project
+        }
     };
+
+    // Interactive install method (if not specified via flags)
     let mode = if args.copy {
         InstallMode::Copy
-    } else {
+    } else if args.yes {
         InstallMode::Symlink
+    } else {
+        let mode_choice: String = cliclack::select("Installation method")
+            .item(
+                String::from("symlink"),
+                "Symlink (recommended)",
+                "Single copy, symlinked to each agent",
+            )
+            .item(
+                String::from("copy"),
+                "Copy",
+                "Independent copy for each agent",
+            )
+            .interact()
+            .into_diagnostic()?;
+        if mode_choice == "copy" {
+            InstallMode::Copy
+        } else {
+            InstallMode::Symlink
+        }
     };
+
+    let target_agents = select_agents(&manager, args.agent.as_ref(), args.yes).await?;
 
     // Summary
     show_install_summary(&selected_skills, &target_agents, &manager, scope, &cwd);
 
     if !args.yes {
-        let confirmed = Confirm::new()
-            .with_prompt("Proceed with installation?")
-            .default(true)
+        let confirmed: bool = cliclack::confirm("Proceed with installation?")
+            .initial_value(true)
             .interact()
             .into_diagnostic()?;
         if !confirmed {
-            println!("  {}", style("Installation cancelled").dim());
+            cliclack::outro(style("Installation cancelled").dim()).into_diagnostic()?;
             return Ok(());
         }
     }
@@ -384,8 +447,36 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
     let (successes, failures) =
         do_install(&manager, &selected_skills, &target_agents, &install_opts).await;
 
+    // Lock file integration (matching TS add.ts)
+    if let Some(owner_repo) = skill::source::get_owner_repo(&parsed) {
+        for s in &selected_skills {
+            let skill_path = parsed
+                .subpath
+                .as_deref()
+                .map(|sp| format!("{}/SKILL.md", sp.trim_end_matches('/')));
+            let hash = skill::lock::fetch_skill_folder_hash(
+                &owner_repo,
+                skill_path.as_deref().unwrap_or(""),
+                skill::lock::get_github_token().as_deref(),
+            )
+            .await
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+            let _ = skill::lock::add_skill_to_lock(
+                &s.name,
+                &owner_repo,
+                &parsed.source_type.to_string(),
+                &parsed.url,
+                skill_path.as_deref(),
+                &hash,
+                s.plugin_name.as_deref(),
+            )
+            .await;
+        }
+    }
+
     if successes > 0 {
-        println!();
         ui::print_success(&format!(
             "Installed {} skill{}",
             selected_skills.len(),
@@ -393,26 +484,23 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         ));
     }
     if failures > 0 {
-        println!();
         ui::print_error(&format!("Failed to install {failures} target(s)"));
     }
 
     send_telemetry(&parsed, &selected_skills, &target_agents, scope);
 
-    println!();
-    println!(
-        "{}{}",
+    cliclack::outro(format!(
+        "{}  {}",
         style("Done!").green(),
-        style("  Review skills before use; they run with full agent permissions.").dim()
-    );
-    println!();
+        style("Review skills before use; they run with full agent permissions.").dim()
+    ))
+    .into_diagnostic()?;
 
     Ok(())
 }
 
 async fn resolve_source(
     parsed: &skill::types::ParsedSource,
-    _cwd: &Path,
 ) -> Result<(PathBuf, Option<tempfile::TempDir>)> {
     if parsed.source_type == SourceType::Local {
         let local_path = parsed
@@ -428,12 +516,13 @@ async fn resolve_source(
         return Ok((local_path.clone(), None));
     }
 
-    let spinner = make_spinner("Cloning repository...");
+    let spinner = cliclack::spinner();
+    spinner.start("Cloning repository...");
     let td = skill::git::clone_repo(&parsed.url, parsed.git_ref.as_deref())
         .await
         .map_err(|e| miette!("{e}"))?;
     let path = td.path().to_path_buf();
-    spinner.finish_with_message("Repository cloned");
+    spinner.stop("Repository cloned");
     Ok((path, Some(td)))
 }
 
@@ -449,19 +538,25 @@ fn show_install_summary(
         .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
         .collect();
 
-    let mut summary = String::new();
+    let mut body = String::new();
     for s in selected_skills {
         let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
-        let short = ui::shorten_path(&canonical, cwd);
-        let _ = writeln!(summary, "{}", style(short).cyan());
-        let _ = writeln!(
-            summary,
-            "  {} {}",
-            style("agents:").dim(),
-            ui::format_list(&agent_names, 5)
+        let _ = writeln!(body, "  {}", ui::shorten_path(&canonical));
+    }
+    {
+        let _ = write!(body, "\n  agents: {}", ui::format_list(&agent_names));
+        let _ = write!(
+            body,
+            "\n  scope:  {}",
+            if scope == InstallScope::Global {
+                "global"
+            } else {
+                "project"
+            }
         );
     }
-    ui::print_note(&summary, "Installation Summary");
+
+    let _ = cliclack::note("Installation Summary", body);
 }
 
 fn send_telemetry(

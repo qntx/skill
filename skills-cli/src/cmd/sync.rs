@@ -91,9 +91,8 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     }
 
     if !args.yes {
-        let confirmed = dialoguer::Confirm::new()
-            .with_prompt("Install these skills?")
-            .default(true)
+        let confirmed: bool = cliclack::confirm("Install these skills?")
+            .initial_value(true)
             .interact()
             .into_diagnostic()?;
 

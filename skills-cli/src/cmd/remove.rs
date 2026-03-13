@@ -5,7 +5,6 @@ use std::path::Path;
 
 use clap::Args;
 use console::style;
-use dialoguer::{Confirm, MultiSelect};
 use miette::{IntoDiagnostic, Result, miette};
 
 use skill::SkillManager;
@@ -110,18 +109,19 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
             .cloned()
             .collect()
     } else {
-        let selections = MultiSelect::new()
-            .with_prompt("Select skills to remove (space to toggle)")
-            .items(&installed)
-            .interact()
-            .into_diagnostic()?;
+        let mut prompt = cliclack::multiselect("Select skills to remove");
+        for s in &installed {
+            prompt = prompt.item(s.clone(), s, "");
+        }
+        prompt = prompt.required(true);
+        let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
 
-        if selections.is_empty() {
+        if selected_names.is_empty() {
             println!("  {}", style("No skills selected").dim());
             return Ok(());
         }
 
-        selections.iter().map(|&i| installed[i].clone()).collect()
+        selected_names
     };
 
     if selected.is_empty() {
@@ -140,14 +140,13 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         }
         println!();
 
-        let confirmed = Confirm::new()
-            .with_prompt(format!(
-                "Are you sure you want to uninstall {} skill(s)?",
-                selected.len()
-            ))
-            .default(false)
-            .interact()
-            .into_diagnostic()?;
+        let confirmed: bool = cliclack::confirm(format!(
+            "Are you sure you want to uninstall {} skill(s)?",
+            selected.len()
+        ))
+        .initial_value(false)
+        .interact()
+        .into_diagnostic()?;
 
         if !confirmed {
             println!("  {}", style("Removal cancelled").dim());

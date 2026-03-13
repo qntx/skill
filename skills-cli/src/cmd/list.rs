@@ -1,4 +1,9 @@
 //! `skills list` command implementation.
+//!
+//! Matches the TS `list.ts` UX: groups skills by plugin name (from lock
+//! file), displays agent info per skill, and supports JSON output.
+
+use std::collections::BTreeMap;
 
 use clap::Args;
 use console::style;
@@ -94,29 +99,59 @@ pub async fn run(args: ListArgs) -> Result<()> {
         return Ok(());
     }
 
+    // Read lock file to get plugin groupings
+    let lock =
+        skill::lock::read_skill_lock()
+            .await
+            .unwrap_or_else(|_| skill::lock::SkillLockFile {
+                version: 3,
+                skills: std::collections::HashMap::new(),
+                dismissed: None,
+                last_selected_agents: None,
+            });
+
+    // Group skills by plugin name
+    let mut grouped: BTreeMap<String, Vec<&skill::types::InstalledSkill>> = BTreeMap::new();
+    for s in &installed {
+        let plugin = lock
+            .skills
+            .get(&s.name)
+            .and_then(|e| e.plugin_name.clone())
+            .unwrap_or_default();
+        grouped.entry(plugin).or_default().push(s);
+    }
+
+    println!();
     println!("  {}", style(format!("{scope_label} Skills")).bold());
     println!();
 
-    for skill in &installed {
-        let short_path = ui::shorten_path(&skill.canonical_path, &cwd);
-        let agent_names: Vec<String> = skill
-            .agents
-            .iter()
-            .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
-            .collect();
+    for (plugin, skills) in &grouped {
+        if !plugin.is_empty() {
+            println!("  {} {}", style("▸").dim(), style(plugin).bold());
+        }
 
-        let agent_info = if agent_names.is_empty() {
-            format!("{}", style("not linked").yellow())
-        } else {
-            ui::format_list(&agent_names, 5)
-        };
+        for skill_item in skills {
+            let short_path = ui::shorten_path(&skill_item.canonical_path);
+            let agent_names: Vec<String> = skill_item
+                .agents
+                .iter()
+                .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
+                .collect();
 
-        println!(
-            "  {} {}",
-            style(&skill.name).cyan(),
-            style(&short_path).dim()
-        );
-        println!("    {} {agent_info}", style("Agents:").dim());
+            let agent_info = if agent_names.is_empty() {
+                format!("{}", style("not linked").yellow())
+            } else {
+                ui::format_list(&agent_names)
+            };
+
+            let indent = if plugin.is_empty() { "  " } else { "    " };
+            println!(
+                "{indent}{} {}",
+                style(&skill_item.name).cyan(),
+                style(&short_path).dim()
+            );
+            println!("{indent}  {} {agent_info}", style("agents:").dim());
+        }
     }
 
     println!();

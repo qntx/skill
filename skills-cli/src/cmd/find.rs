@@ -1,11 +1,17 @@
 //! `skills find [query]` command implementation.
+//!
+//! When no query is provided, launches an interactive fzf-style search
+//! prompt matching the TS `find.ts` UX. Otherwise, performs a one-shot
+//! API search and prints results.
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use clap::Args;
 use console::style;
-use miette::Result;
-use reqwest;
+use miette::{IntoDiagnostic, Result};
+
+use crate::ui;
 
 /// Arguments for the `find` command.
 #[derive(Args)]
@@ -15,7 +21,7 @@ pub struct FindArgs {
 }
 
 /// A skill result from the search API.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 struct SearchSkill {
     name: String,
     #[serde(rename = "id")]
@@ -44,23 +50,136 @@ fn format_installs(count: u64) -> String {
     }
 }
 
+fn api_base() -> String {
+    std::env::var("SKILLS_API_URL").unwrap_or_else(|_| "https://skills.sh".to_owned())
+}
+
+/// Search call using the current tokio Handle to block on async reqwest.
+fn search_api_sync(query: &str) -> Vec<SearchSkill> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let url = format!(
+        "{}/api/search?q={}&limit=20",
+        api_base(),
+        urlencoding::encode(query)
+    );
+
+    let handle = tokio::runtime::Handle::current();
+    handle
+        .block_on(async {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .ok()?;
+            let resp = client.get(&url).send().await.ok()?;
+            if !resp.status().is_success() {
+                return None;
+            }
+            resp.json::<SearchResponse>().await.ok().map(|r| r.skills)
+        })
+        .unwrap_or_default()
+}
+
+/// Run interactive fzf search.
+fn run_interactive() -> Result<Option<String>> {
+    // Cache to avoid repeated API calls for the same query
+    let cache: Arc<Mutex<HashMap<String, Vec<SearchSkill>>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    let cache_ref = Arc::clone(&cache);
+    let result = ui::fzf_search("Search for skills", move |query| {
+        if query.is_empty() {
+            return Vec::new();
+        }
+
+        // Check cache first
+        {
+            let cache_lock = cache_ref.lock().expect("cache lock");
+            if let Some(cached) = cache_lock.get(query) {
+                return cached
+                    .iter()
+                    .map(|s| {
+                        let pkg = if s.source.is_empty() {
+                            &s.slug
+                        } else {
+                            &s.source
+                        };
+                        let installs = format_installs(s.installs);
+                        ui::FzfItem {
+                            label: format!("{pkg}@{}", s.name),
+                            description: installs,
+                            value: format!("{pkg}@{}", s.name),
+                            hint: Some(format!("https://skills.sh/{}", s.slug)),
+                        }
+                    })
+                    .collect();
+            }
+        }
+
+        // Perform blocking search
+        let results = search_api_sync(query);
+
+        // Cache results
+        {
+            let mut cache_lock = cache_ref.lock().expect("cache lock");
+            cache_lock.insert(query.to_owned(), results.clone());
+        }
+
+        results
+            .iter()
+            .map(|s| {
+                let pkg = if s.source.is_empty() {
+                    &s.slug
+                } else {
+                    &s.source
+                };
+                let installs = format_installs(s.installs);
+                ui::FzfItem {
+                    label: format!("{pkg}@{}", s.name),
+                    description: installs,
+                    value: format!("{pkg}@{}", s.name),
+                    hint: Some(format!("https://skills.sh/{}", s.slug)),
+                }
+            })
+            .collect()
+    })
+    .into_diagnostic()?;
+
+    match result {
+        ui::FzfResult::Selected(value) => Ok(Some(value)),
+        ui::FzfResult::Cancelled => Ok(None),
+    }
+}
+
 /// Run the find command.
 pub async fn run(args: FindArgs) -> Result<()> {
     let query = args.query.join(" ");
 
+    // Interactive mode when no query
     if query.is_empty() {
-        println!();
-        println!("  {}", style("Usage: skills find <query>").dim());
-        println!("  {}", style("Then:  skills add <owner/repo@skill>").dim());
-        println!();
+        let selected = tokio::task::block_in_place(run_interactive)?;
+        if let Some(skill_ref) = selected {
+            println!();
+            println!(
+                "  {} skills add {}",
+                style("Install with:").dim(),
+                style(&skill_ref).cyan()
+            );
+            println!();
+
+            // Telemetry
+            let mut props = HashMap::new();
+            props.insert("action".to_owned(), "interactive_select".to_owned());
+            props.insert("selected".to_owned(), skill_ref);
+            skill::telemetry::track("find", props);
+        }
         return Ok(());
     }
 
-    // Search via API
-    let api_base =
-        std::env::var("SKILLS_API_URL").unwrap_or_else(|_| "https://skills.sh".to_owned());
+    // One-shot search
     let url = format!(
-        "{api_base}/api/search?q={}&limit=10",
+        "{}/api/search?q={}&limit=10",
+        api_base(),
         urlencoding::encode(&query)
     );
 
@@ -98,7 +217,7 @@ pub async fn run(args: FindArgs) -> Result<()> {
 
     println!();
     println!(
-        "  {} npx skills add <owner/repo@skill>",
+        "  {} skills add <owner/repo@skill>",
         style("Install with").dim()
     );
     println!();
