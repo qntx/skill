@@ -13,7 +13,47 @@ A drop-in, feature-equivalent Rust replacement for the
 [Vercel `skills` CLI](https://github.com/vercel-labs/skills).
 Single static binary, zero runtime dependencies, full API compatibility.
 
+<!-- agent-list:start -->
+Supports **Cursor**, **Claude Code**, **Windsurf**, **Codex**, and [35 more](#supported-agents).
+<!-- agent-list:end -->
+
 </div>
+
+---
+
+## Install a Skill
+
+```bash
+skills add qntx/skills
+```
+
+## Install the CLI
+
+**Shell** (macOS / Linux):
+
+```sh
+curl -fsSL https://sh.qntx.fun/skill | sh
+```
+
+**PowerShell** (Windows):
+
+```powershell
+irm https://sh.qntx.fun/skill/ps | iex
+```
+
+**Cargo**:
+
+```bash
+cargo install skills-cli
+```
+
+**From Source**:
+
+```bash
+git clone https://github.com/qntx/skill.git
+cd skill
+cargo install --path skills-cli
+```
 
 ---
 
@@ -23,10 +63,10 @@ Single static binary, zero runtime dependencies, full API compatibility.
 A skill is a directory containing a `SKILL.md` file with YAML frontmatter that
 describes behaviour an agent should adopt. This project provides:
 
-| Crate           | Description                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| **`skill`**     | Core library — discovery, parsing, installation, lock-file management, provider registry |
-| **`skill-cli`** | Binary (`skills`) — interactive CLI with the same UX as the TypeScript original          |
+| Crate            | Description                                                                              |
+| ---------------  | ---------------------------------------------------------------------------------------- |
+| **`skill`**      | Core library — discovery, parsing, installation, lock-file management, provider registry |
+| **`skills-cli`** | Binary (`skills`) — interactive CLI with the same UX as the TypeScript original          |
 
 The Rust port achieves **100 % command parity** with the original TypeScript CLI
 while adding the performance and reliability benefits of a native compiled binary.
@@ -42,54 +82,192 @@ while adding the performance and reliability benefits of a native compiled binar
 - **Telemetry-aware** — opt-in anonymous telemetry (respects `DO_NOT_TRACK` / `DISABLE_TELEMETRY`)
 - **Cross-platform** — Linux, macOS, Windows (with native junction support)
 
-## Quick Start
-
-### Install the CLI
-
-**Shell** (macOS / Linux):
-
-```sh
-curl -fsSL https://sh.qntx.fun/skill | sh
-```
-
-**PowerShell** (Windows):
-
-```powershell
-irm https://sh.qntx.fun/skill/ps | iex
-```
-
-### CLI
+## Source Formats
 
 ```bash
-# Add skills from a GitHub repo
+# GitHub shorthand (owner/repo)
 skills add qntx/skills
 
-# Add a specific skill for all agents, non-interactively
-skills add owner/repo --skill '*' --agent '*' -y
+# Full GitHub URL
+skills add https://github.com/qntx/skills
 
-# Add from a local directory
-skills add ./my-skills
+# Direct path to a skill in a repo
+skills add https://github.com/qntx/skills/tree/main/skills/code-review
 
-# List installed skills
-skills list
+# GitLab URL
+skills add https://gitlab.com/org/repo
 
-# Search the skills registry
-skills find "code review"
+# Prefix shorthand
+skills add github:owner/repo
+skills add gitlab:owner/repo
 
-# Check for updates
-skills check
+# Local path
+skills add ./my-local-skills
+skills add /absolute/path/to/skills
 
-# Update all skills
-skills update
-
-# Remove a skill
-skills remove my-skill
-
-# Initialize a new skill
-skills init
+# Well-known HTTP endpoints
+skills add https://example.com   # checks /.well-known/skills/index.json
 ```
 
-### Library
+## `skills add` Options
+
+| Option                    | Description                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `-g, --global`            | Install to user directory instead of project                                    |
+| `-a, --agent <agents...>` | Target specific agents (e.g., `claude-code`, `cursor`). Use `'*'` for all       |
+| `-s, --skill <skills...>` | Install specific skills by name (use `'*'` for all skills)                      |
+| `-l, --list`              | List available skills without installing                                        |
+| `--copy`                  | Copy files instead of symlinking to agent directories                           |
+| `-y, --yes`               | Skip all confirmation prompts                                                   |
+| `--all`                   | Install all skills to all agents without prompts (shorthand for `--skill '*' --agent '*' -y`) |
+
+### Examples
+
+```bash
+# List skills in a repository
+skills add qntx/skills --list
+
+# Install specific skills
+skills add qntx/skills --skill frontend-design --skill code-review
+
+# Install a skill with spaces in the name (must be quoted)
+skills add owner/repo --skill "Convex Best Practices"
+
+# Install to specific agents
+skills add qntx/skills -a claude-code -a cursor
+
+# Non-interactive installation (CI/CD friendly)
+skills add qntx/skills --skill frontend-design -g -a claude-code -y
+
+# Install all skills from a repo to all agents
+skills add qntx/skills --all
+
+# Install all skills to specific agents
+skills add qntx/skills --skill '*' -a claude-code
+
+# Install specific skills to all agents
+skills add qntx/skills --agent '*' --skill frontend-design
+```
+
+### Installation Scope
+
+| Scope       | Flag      | Location            | Use Case                                      |
+| ----------- | --------- | ------------------- | --------------------------------------------- |
+| **Project** | (default) | `./<agent>/skills/` | Committed with your project, shared with team |
+| **Global**  | `-g`      | `~/<agent>/skills/` | Available across all projects                 |
+
+### Installation Methods
+
+| Method                    | Description                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| **Symlink** (Recommended) | Creates symlinks from each agent to a canonical copy. Single source of truth, easy updates. |
+| **Copy**                  | Creates independent copies for each agent. Use when symlinks aren't supported.              |
+
+> **Note:** On Windows, junctions are used instead of symlinks for directory linking.
+
+## Other Commands
+
+| Command                       | Aliases             | Description                            |
+| ----------------------------- | ------------------- | -------------------------------------- |
+| `skills add <source>`         | `a`, `install`, `i` | Add a skill package from any source    |
+| `skills remove <name>`        | `rm`, `r`           | Remove installed skills                |
+| `skills list`                 | `ls`                | List installed skills                  |
+| `skills find <query>`         | `f`, `s`, `search`  | Search the skills registry             |
+| `skills check`                |                     | Check for available skill updates      |
+| `skills update`               | `upgrade`           | Update all skills to latest versions   |
+| `skills init`                 |                     | Scaffold a new `SKILL.md`              |
+| `skills experimental-install` |                     | Restore skills from `skills-lock.json` |
+| `skills experimental-sync`    |                     | Sync skills from `node_modules`        |
+
+### `skills list`
+
+List all installed skills. Similar to `npm ls`.
+
+```bash
+# List all installed skills (project and global)
+skills list
+
+# List only global skills
+skills ls -g
+
+# Filter by specific agents
+skills ls -a claude-code -a cursor
+```
+
+### `skills find`
+
+Search for skills interactively or by keyword.
+
+```bash
+# Interactive search (fzf-style)
+skills find
+
+# Search by keyword
+skills find typescript
+```
+
+### `skills check` / `skills update`
+
+```bash
+# Check if any installed skills have updates
+skills check
+
+# Update all skills to latest versions
+skills update
+```
+
+### `skills init`
+
+```bash
+# Create SKILL.md in current directory
+skills init
+
+# Create a new skill in a subdirectory
+skills init my-skill
+```
+
+### `skills remove`
+
+Remove installed skills from agents.
+
+```bash
+# Remove interactively (select from installed skills)
+skills remove
+
+# Remove specific skill by name
+skills remove web-design-guidelines
+
+# Remove multiple skills
+skills remove frontend-design web-design-guidelines
+
+# Remove from global scope
+skills remove --global web-design-guidelines
+
+# Remove from specific agents only
+skills remove --agent claude-code cursor my-skill
+
+# Remove all installed skills without confirmation
+skills remove --all
+
+# Remove all skills from a specific agent
+skills remove --skill '*' -a cursor
+
+# Remove a specific skill from all agents
+skills remove my-skill --agent '*'
+
+# Use 'rm' alias
+skills rm my-skill
+```
+
+| Option         | Description                                      |
+| -------------- | ------------------------------------------------ |
+| `-g, --global` | Remove from global scope (~/) instead of project |
+| `-a, --agent`  | Remove from specific agents (use `'*'` for all)  |
+| `-s, --skill`  | Specify skills to remove (use `'*'` for all)     |
+| `-y, --yes`    | Skip confirmation prompts                        |
+| `--all`        | Shorthand for `--skill '*' --agent '*' -y`       |
+
+## Library Usage
 
 ```rust
 use skill::SkillManager;
@@ -121,20 +299,6 @@ async fn main() -> skill::Result<()> {
     Ok(())
 }
 ```
-
-## CLI Commands
-
-| Command                       | Aliases             | Description                            |
-| ----------------------------- | ------------------- | -------------------------------------- |
-| `skills add <source>`         | `a`, `install`, `i` | Add a skill package from any source    |
-| `skills remove <name>`        | `rm`, `r`           | Remove installed skills                |
-| `skills list`                 | `ls`                | List installed skills                  |
-| `skills find <query>`         | `f`, `s`, `search`  | Search the skills registry             |
-| `skills check`                |                     | Check for available skill updates      |
-| `skills update`               | `upgrade`           | Update all skills to latest versions   |
-| `skills init`                 |                     | Scaffold a new `SKILL.md`              |
-| `skills experimental-install` |                     | Restore skills from `skills-lock.json` |
-| `skills experimental-sync`    |                     | Sync skills from `node_modules`        |
 
 ## Supported Agents
 
@@ -185,53 +349,76 @@ async fn main() -> skill::Result<()> {
 
 </details>
 
-## Source Formats
+## Creating Skills
 
-The `add` command accepts many source formats:
-
-```bash
-# GitHub shorthand
-skills add owner/repo
-skills add owner/repo/path/to/skill
-skills add owner/repo@skill-name
-
-# GitHub URLs
-skills add https://github.com/owner/repo
-skills add https://github.com/owner/repo/tree/branch/path
-
-# GitLab URLs
-skills add https://gitlab.com/group/repo
-skills add https://gitlab.com/group/repo/-/tree/branch/path
-
-# Prefix shorthand
-skills add github:owner/repo
-skills add gitlab:owner/repo
-
-# Local paths
-skills add ./my-local-skills
-skills add /absolute/path/to/skills
-
-# Well-known HTTP endpoints
-skills add https://example.com   # checks /.well-known/skills/index.json
-```
-
-## Creating a Skill
-
-A skill is a directory containing a `SKILL.md` file:
+Skills are directories containing a `SKILL.md` file with YAML frontmatter:
 
 ```markdown
 ---
 name: my-skill
-description: A brief description of what this skill does
-metadata:
-  tags: [rust, testing]
+description: What this skill does and when to use it
 ---
 
-Instructions for the AI agent go here.
-The agent will follow these instructions when this skill is active.
+# My Skill
+
+Instructions for the agent to follow when this skill is activated.
+
+## When to Use
+
+Describe the scenarios where this skill should be used.
+
+## Steps
+
+1. First, do this
+2. Then, do that
 ```
 
-Use `skills init` to scaffold a new skill interactively.
+### Required Fields
+
+- **`name`** — Unique identifier (lowercase, hyphens allowed)
+- **`description`** — Brief explanation of what the skill does
+
+### Optional Fields
+
+- **`metadata.internal`** — Set to `true` to hide the skill from normal discovery. Internal skills are only visible when `INSTALL_INTERNAL_SKILLS=1` is set.
+- **`metadata.tags`** — Array of tags for categorization and search.
+
+```markdown
+---
+name: my-internal-skill
+description: An internal skill not shown by default
+metadata:
+  internal: true
+  tags: [internal, wip]
+---
+```
+
+### Skill Discovery
+
+The CLI searches for skills in these locations within a repository:
+
+- Root directory (if it contains `SKILL.md`)
+- `skills/`, `skills/.curated/`, `skills/.experimental/`, `skills/.system/`
+- Agent-specific directories: `.claude/skills/`, `.cursor/skills/`, `.windsurf/skills/`, etc.
+
+### Plugin Manifest Discovery
+
+If `.claude-plugin/marketplace.json` or `.claude-plugin/plugin.json` exists, skills declared in those files are also discovered:
+
+```json
+{
+  "metadata": { "pluginRoot": "./plugins" },
+  "plugins": [
+    {
+      "name": "my-plugin",
+      "source": "my-plugin",
+      "skills": ["./skills/review", "./skills/test"]
+    }
+  ]
+}
+```
+
+This enables compatibility with the [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) ecosystem.
 
 ## Design Principles
 
@@ -280,6 +467,37 @@ This project is a **drop-in replacement** for the
 - Same telemetry endpoint and event schema
 - Same installation semantics (canonical + symlink/junction)
 
+## Agent Compatibility
+
+Skills are generally compatible across agents since they follow a shared [Agent Skills specification](https://agentskills.io). However, some features may be agent-specific:
+
+| Feature         | Claude Code | Cursor | Windsurf | Codex | Cline | Roo Code | OpenCode |
+| --------------- | ----------- | ------ | -------- | ----- | ----- | -------- | -------- |
+| Basic skills    | ✅          | ✅     | ✅       | ✅    | ✅    | ✅       | ✅       |
+| `allowed-tools` | ✅          | ✅     | ✅       | ✅    | ✅    | ✅       | ✅       |
+| `context: fork` | ✅          | ❌     | ❌       | ❌    | ❌    | ❌       | ❌       |
+| Hooks           | ✅          | ❌     | ❌       | ❌    | ✅    | ❌       | ❌       |
+
+## Troubleshooting
+
+### "No skills found"
+
+Ensure the repository contains valid `SKILL.md` files with both `name` and `description` in the frontmatter.
+
+### Skill not loading in agent
+
+- Verify the skill was installed to the correct path
+- Check the agent's documentation for skill loading requirements
+- Ensure the `SKILL.md` frontmatter is valid YAML
+
+### Permission errors
+
+Ensure you have write access to the target directory. On Windows, you may need to run as Administrator for junction creation.
+
+### Symlink issues on Windows
+
+Windows requires Developer Mode or Administrator privileges for symlinks. The CLI automatically falls back to junctions for directories.
+
 ## Security
 
 - **Path traversal protection** — All subpaths and skill names are validated to
@@ -290,6 +508,20 @@ This project is a **drop-in replacement** for the
   they do not execute code during installation.
 - **Dependency audit** — Minimal dependency tree; only well-known crates from
   the Rust ecosystem.
+
+## Related Links
+
+- [Agent Skills Specification](https://agentskills.io)
+- [Skills Directory](https://skills.sh)
+- [Claude Code Skills Documentation](https://code.claude.com/docs/en/skills)
+- [Cursor Skills Documentation](https://cursor.com/docs/context/skills)
+- [Windsurf Skills Documentation](https://docs.codeium.com/windsurf/skills)
+- [Codex Skills Documentation](https://developers.openai.com/codex/skills)
+- [Cline Skills Documentation](https://docs.cline.bot/features/skills)
+- [Roo Code Skills Documentation](https://docs.roocode.com/features/skills)
+- [OpenCode Skills Documentation](https://opencode.ai/docs/skills)
+- [GitHub Copilot Agent Skills](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills)
+- [Vercel Agent Skills Repository](https://github.com/vercel-labs/agent-skills)
 
 ## License
 

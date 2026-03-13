@@ -60,18 +60,33 @@ pub fn sanitize_name(name: &str) -> String {
 
 /// Validate that `target_path` is within `base_path`.
 fn is_path_safe(base_path: &Path, target_path: &Path) -> bool {
-    let Ok(nb) = normalize_path(base_path) else {
-        return false;
-    };
-    let Ok(nt) = normalize_path(target_path) else {
-        return false;
-    };
-    nt.starts_with(&nb)
+    normalize_path(target_path).starts_with(&normalize_path(base_path))
 }
 
-fn normalize_path(p: &Path) -> std::io::Result<PathBuf> {
-    std::fs::canonicalize(p)
-        .or_else(|_| Ok(std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf())))
+/// Best-effort path normalization for safety checks.
+///
+/// On Windows, `std::fs::canonicalize` returns UNC paths (`\\?\C:\...`)
+/// which don't compare equal to regular paths from `std::path::absolute`.
+/// We strip the prefix to ensure consistent `starts_with` comparisons
+/// between existing and not-yet-existing paths.
+fn normalize_path(p: &Path) -> PathBuf {
+    let path = std::fs::canonicalize(p)
+        .or_else(|_| std::path::absolute(p))
+        .unwrap_or_else(|_| p.to_path_buf());
+    strip_unc_prefix(path)
+}
+
+/// Strip the `\\?\` UNC prefix that Windows `canonicalize` produces.
+#[cfg(windows)]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    let s = path.to_string_lossy().into_owned();
+    s.strip_prefix("\\\\?\\")
+        .map_or(path, |stripped| PathBuf::from(stripped))
+}
+
+#[cfg(not(windows))]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    path
 }
 
 /// Get the canonical `.agents/skills` directory.

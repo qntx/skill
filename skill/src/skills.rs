@@ -161,8 +161,24 @@ pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
 }
 
 /// Best-effort path normalization: canonical if possible, lexical otherwise.
+///
+/// On Windows, strips the `\\?\` UNC prefix that `canonicalize` produces
+/// to ensure consistent `starts_with` comparisons.
 fn normalize_path(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| lexical_normalize(path))
+    let p = std::fs::canonicalize(path).unwrap_or_else(|_| lexical_normalize(path));
+    strip_unc_prefix(p)
+}
+
+#[cfg(windows)]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    let s = path.to_string_lossy().into_owned();
+    s.strip_prefix("\\\\?\\")
+        .map_or(path, |stripped| PathBuf::from(stripped))
+}
+
+#[cfg(not(windows))]
+fn strip_unc_prefix(path: PathBuf) -> PathBuf {
+    path
 }
 
 /// Lexical path normalization (resolve `.` and `..` without filesystem access).

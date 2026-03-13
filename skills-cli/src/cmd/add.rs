@@ -231,7 +231,24 @@ async fn do_install(
                 .await
             {
                 Ok(result) if result.success => successes += 1,
-                Ok(_) | Err(_) => failures += 1,
+                Ok(result) => {
+                    tracing::warn!(
+                        skill = %skill_item.name,
+                        agent = %agent_id,
+                        error = result.error.as_deref().unwrap_or("unknown"),
+                        "install failed"
+                    );
+                    failures += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        skill = %skill_item.name,
+                        agent = %agent_id,
+                        error = %e,
+                        "install failed"
+                    );
+                    failures += 1;
+                }
             }
         }
     }

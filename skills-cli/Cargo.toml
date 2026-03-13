@@ -1,5 +1,5 @@
 [package]
-name = "skill-cli"
+name = "skills-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

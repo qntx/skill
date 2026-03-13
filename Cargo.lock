@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "skill"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "dirs",
  "junction",
@@ -1722,8 +1722,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "skill-cli"
-version = "0.3.0"
+name = "skills-cli"
+version = "0.3.1"
 dependencies = [
  "clap",
  "console",
