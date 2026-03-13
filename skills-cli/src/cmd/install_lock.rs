@@ -78,7 +78,7 @@ pub async fn run() -> Result<()> {
         println!("{DIM}Installing from {source}...{RESET}");
         let result = super::add::run_add(RunAddOptions {
             source: source.clone(),
-            global: false,
+            global: Some(false),
             yes: true,
             skill_filter: Some(skill_names.clone()),
             agent: Some(universal_agent_names.clone()),

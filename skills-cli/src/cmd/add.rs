@@ -1,10 +1,10 @@
 //! `skills add <source>` command implementation.
 //!
 //! Matches the `TypeScript` `add.ts` UX: cliclack prompts for skill and
-//! agent selection, plain ANSI output for results.  Scope and install mode
-//! come exclusively from CLI flags (no interactive prompts), matching TS.
+//! agent selection, scope and mode prompts when not specified via flags,
+//! installation summary display, and plain ANSI output for results.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -29,8 +29,8 @@ pub struct AddArgs {
     pub source: Vec<String>,
 
     /// Install globally (user-level) instead of project-level.
-    #[arg(short, long)]
-    pub global: bool,
+    #[arg(short, long, default_missing_value = "true", num_args = 0)]
+    pub global: Option<bool>,
 
     /// Target agents (use `*` for all).
     #[arg(short, long, num_args = 1..)]
@@ -70,46 +70,148 @@ fn missing_source_error() -> miette::Report {
 
 // ── Skill selection ─────────────────────────────────────────────────
 
+fn kebab_to_title(s: &str) -> String {
+    s.split('-')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(first) => {
+                    let upper: String = first.to_uppercase().collect();
+                    upper + c.as_str()
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn truncate_hint(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_owned()
+    } else {
+        format!("{}...", &s[..max.saturating_sub(3)])
+    }
+}
+
 fn select_skills(
     skills: &[Skill],
     skill_filter: Option<&Vec<String>>,
     yes: bool,
 ) -> Result<Vec<Skill>> {
     if skill_filter.is_some_and(|s| s.contains(&"*".to_owned())) {
+        println!("{TEXT}Installing all {} skills{RESET}", skills.len());
         return Ok(skills.to_vec());
     }
 
     if let Some(names) = skill_filter {
         let filtered = skill::skills::filter_skills(skills, names);
         if filtered.is_empty() {
+            println!("{DIM}Available skills:{RESET}");
+            for s in skills {
+                println!("  {DIM}- {}{RESET}", s.name);
+            }
             return Err(miette!(
                 "No matching skills found for: {}",
                 names.join(", ")
             ));
         }
+        let display: Vec<String> = filtered.iter().map(|s| s.name.clone()).collect();
+        println!(
+            "{TEXT}Selected {} skill{}: {}{RESET}",
+            filtered.len(),
+            if filtered.len() != 1 { "s" } else { "" },
+            display.join(", ")
+        );
         return Ok(filtered);
     }
 
-    if skills.len() == 1 || yes {
+    if skills.len() == 1 {
+        let s = &skills[0];
+        println!("{TEXT}Skill: {}{RESET}", s.name);
+        println!("{DIM}{}{RESET}", s.description);
         return Ok(skills.to_vec());
     }
 
-    let mut prompt = cliclack::multiselect("Select skills to install (space to toggle)");
-    for s in skills {
-        prompt = prompt.item(s.name.clone(), &s.name, &s.description);
-    }
-    prompt = prompt.required(true);
-
-    let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
-    if selected_names.is_empty() {
-        return Err(miette!("No skills selected"));
+    if yes {
+        println!("{TEXT}Installing all {} skills{RESET}", skills.len());
+        return Ok(skills.to_vec());
     }
 
-    Ok(skills
-        .iter()
-        .filter(|s| selected_names.contains(&s.name))
-        .cloned()
-        .collect())
+    // Sort by plugin name then skill name (matches TS).
+    let mut sorted = skills.to_vec();
+    sorted.sort_by(|a, b| match (&a.plugin_name, &b.plugin_name) {
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(pa), Some(pb)) if pa != pb => pa.cmp(pb),
+        _ => a.name.cmp(&b.name),
+    });
+
+    let has_groups = sorted.iter().any(|s| s.plugin_name.is_some());
+
+    if has_groups {
+        // Build grouped options: group header label → items
+        let mut groups: BTreeMap<String, Vec<(&Skill, String)>> = BTreeMap::new();
+        for s in &sorted {
+            let group = s
+                .plugin_name
+                .as_deref()
+                .map_or_else(|| "Other".to_owned(), kebab_to_title);
+            groups
+                .entry(group)
+                .or_default()
+                .push((s, truncate_hint(&s.description, 60)));
+        }
+
+        let mut prompt = cliclack::multiselect(format!(
+            "Select skills to install {DIM}(space to toggle){RESET}"
+        ));
+        for (group, items) in &groups {
+            // Add group header as a non-selectable separator via label styling
+            prompt = prompt.item(
+                format!("__group__{group}"),
+                &format!("\x1b[1m{group}\x1b[0m"),
+                "",
+            );
+            for (skill, hint) in items {
+                prompt = prompt.item(skill.name.clone(), &skill.name, hint);
+            }
+        }
+        prompt = prompt.required(true);
+
+        let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
+        let selected_names: Vec<String> = selected_names
+            .into_iter()
+            .filter(|n| !n.starts_with("__group__"))
+            .collect();
+
+        if selected_names.is_empty() {
+            return Err(miette!("No skills selected"));
+        }
+
+        Ok(sorted
+            .iter()
+            .filter(|s| selected_names.contains(&s.name))
+            .cloned()
+            .collect())
+    } else {
+        let mut prompt = cliclack::multiselect("Select skills to install");
+        for s in &sorted {
+            prompt = prompt.item(s.name.clone(), &s.name, &truncate_hint(&s.description, 60));
+        }
+        prompt = prompt.required(true);
+
+        let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
+        if selected_names.is_empty() {
+            return Err(miette!("No skills selected"));
+        }
+
+        Ok(sorted
+            .iter()
+            .filter(|s| selected_names.contains(&s.name))
+            .cloned()
+            .collect())
+    }
 }
 
 // ── Agent selection ─────────────────────────────────────────────────
@@ -126,23 +228,100 @@ pub async fn select_agents(
     let all_ids = manager.agents().all_ids();
 
     if agent_arg.is_some_and(|a| a.contains(&"*".to_owned())) {
+        println!("{TEXT}Installing to all {} agents{RESET}", all_ids.len());
         return Ok(all_ids);
     }
 
     if let Some(names) = agent_arg {
+        let valid_ids = manager.agents().all_ids();
+        let invalid: Vec<_> = names
+            .iter()
+            .filter(|n| !valid_ids.iter().any(|id| id.as_str() == n.as_str()))
+            .collect();
+        if !invalid.is_empty() {
+            return Err(miette!(
+                "Invalid agents: {}\nValid agents: {}",
+                invalid
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                valid_ids
+                    .iter()
+                    .map(|id| id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         return Ok(names.iter().map(AgentId::new).collect());
     }
 
     let detected = manager.detect_installed_agents().await;
 
+    // Matches TS: --yes with detected → auto-select; --yes without → all agents.
     if yes {
         return Ok(if detected.is_empty() {
+            println!("{TEXT}Installing to all agents{RESET}");
             all_ids
         } else {
-            ensure_universal_agents(manager, detected)
+            let agents = ensure_universal_agents(manager, detected.clone());
+            let display: Vec<String> = agents
+                .iter()
+                .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
+                .collect();
+            println!("{TEXT}Installing to: {}{RESET}", display.join(", "));
+            agents
         });
     }
 
+    // Matches TS: 0 detected → prompt with ALL agents (no locked section).
+    if detected.is_empty() {
+        println!("{TEXT}Select agents to install skills to{RESET}");
+        let items: Vec<ui::SearchItem> = all_ids
+            .iter()
+            .filter_map(|id| {
+                manager.agents().get(id).map(|c| ui::SearchItem {
+                    value: id.as_str().to_owned(),
+                    label: c.display_name.clone(),
+                    hint: None,
+                })
+            })
+            .collect();
+
+        let result = ui::search_multiselect(&ui::SearchMultiselectOptions {
+            message: "Which agents do you want to install to?".to_owned(),
+            items,
+            max_visible: 8,
+            initial_selected: Vec::new(),
+            required: true,
+            locked_section: None,
+        })
+        .into_diagnostic()?;
+
+        return match result {
+            ui::SearchMultiselectResult::Selected(values) => {
+                let _ = skill::lock::save_selected_agents(&values).await;
+                Ok(values.into_iter().map(AgentId::new).collect())
+            }
+            ui::SearchMultiselectResult::Cancelled => {
+                println!("{DIM}Installation cancelled{RESET}");
+                std::process::exit(0);
+            }
+        };
+    }
+
+    // Matches TS: exactly 1 detected → auto-select (+ universal), no prompt.
+    if detected.len() == 1 {
+        let agents = ensure_universal_agents(manager, detected.clone());
+        let display_name = detected
+            .first()
+            .and_then(|id| manager.agents().get(id))
+            .map_or_else(String::new, |c| c.display_name.clone());
+        println!("{TEXT}Installing to: {display_name}{RESET}");
+        return Ok(agents);
+    }
+
+    // >1 detected → interactive search-multiselect with universal locked section.
     let universal = manager.agents().universal_agents();
     let non_universal = manager.agents().non_universal_agents();
 
@@ -219,6 +398,190 @@ fn ensure_universal_agents(manager: &SkillManager, mut agents: Vec<AgentId>) -> 
         }
     }
     agents
+}
+
+/// Resolve installation scope interactively when not specified via flags.
+/// Matches TS: prompt for Project vs Global when `options.global === undefined`.
+fn resolve_scope(
+    global_flag: Option<bool>,
+    yes: bool,
+    target_agents: &[AgentId],
+    manager: &SkillManager,
+) -> Result<InstallScope> {
+    if let Some(g) = global_flag {
+        return Ok(if g {
+            InstallScope::Global
+        } else {
+            InstallScope::Project
+        });
+    }
+
+    if yes {
+        return Ok(InstallScope::Project);
+    }
+
+    let supports_global = target_agents.iter().any(|a| {
+        manager
+            .agents()
+            .get(a)
+            .and_then(|c| c.global_skills_dir.as_ref())
+            .is_some()
+    });
+
+    if !supports_global {
+        return Ok(InstallScope::Project);
+    }
+
+    let scope: bool = cliclack::select("Installation scope")
+        .item(
+            false,
+            "Project",
+            "Install in current directory (committed with your project)",
+        )
+        .item(
+            true,
+            "Global",
+            "Install in home directory (available across all projects)",
+        )
+        .interact()
+        .into_diagnostic()?;
+
+    Ok(if scope {
+        InstallScope::Global
+    } else {
+        InstallScope::Project
+    })
+}
+
+/// Resolve installation mode interactively when not specified via flags.
+/// Matches TS: prompt for Symlink vs Copy when `!options.copy && !options.yes`.
+fn resolve_mode(copy_flag: bool, yes: bool) -> Result<InstallMode> {
+    if copy_flag {
+        return Ok(InstallMode::Copy);
+    }
+    if yes {
+        return Ok(InstallMode::Symlink);
+    }
+
+    let mode: InstallMode = cliclack::select("Installation method")
+        .item(
+            InstallMode::Symlink,
+            "Symlink (Recommended)",
+            "Single source of truth, easy updates",
+        )
+        .item(
+            InstallMode::Copy,
+            "Copy to all agents",
+            "Independent copies for each agent",
+        )
+        .interact()
+        .into_diagnostic()?;
+
+    Ok(mode)
+}
+
+/// Print a pre-confirmation installation summary box (matches TS `p.note(..., 'Installation Summary')`).
+fn print_installation_summary(
+    skills: &[Skill],
+    agents: &[AgentId],
+    manager: &SkillManager,
+    scope: InstallScope,
+    mode: InstallMode,
+    cwd: &Path,
+) {
+    let mut lines: Vec<String> = Vec::new();
+
+    // Group skills by plugin name for summary.
+    let mut grouped: BTreeMap<String, Vec<&Skill>> = BTreeMap::new();
+    let mut ungrouped: Vec<&Skill> = Vec::new();
+    for s in skills {
+        if let Some(ref plugin) = s.plugin_name {
+            grouped.entry(plugin.clone()).or_default().push(s);
+        } else {
+            ungrouped.push(s);
+        }
+    }
+
+    let print_skill_summary = |lines: &mut Vec<String>, skill_list: &[&Skill]| {
+        for s in skill_list {
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
+            let short = ui::shorten_path_with_cwd(&canonical, cwd);
+            lines.push(format!("\x1b[36m{short}\x1b[0m"));
+            lines.extend(build_agent_summary_lines(agents, manager, mode));
+        }
+    };
+
+    for (group, skill_list) in &grouped {
+        let title = kebab_to_title(group);
+        lines.push(String::new());
+        lines.push(format!("\x1b[1m{title}\x1b[0m"));
+        print_skill_summary(&mut lines, skill_list);
+    }
+
+    if !ungrouped.is_empty() {
+        if !grouped.is_empty() {
+            lines.push(String::new());
+            lines.push("\x1b[1mGeneral\x1b[0m".to_owned());
+        }
+        print_skill_summary(&mut lines, &ungrouped);
+    }
+
+    // Remove leading empty line if present.
+    if lines.first().is_some_and(|l| l.is_empty()) {
+        lines.remove(0);
+    }
+
+    println!();
+    println!("{DIM}╭ {TEXT}Installation Summary{RESET} {DIM}─{RESET}");
+    for line in &lines {
+        println!("{DIM}│{RESET}  {line}");
+    }
+    println!("{DIM}╰─{RESET}");
+}
+
+fn build_agent_summary_lines(
+    agents: &[AgentId],
+    manager: &SkillManager,
+    mode: InstallMode,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if mode == InstallMode::Copy {
+        let names: Vec<String> = agents
+            .iter()
+            .filter_map(|a| manager.agents().get(a).map(|c| c.display_name.clone()))
+            .collect();
+        lines.push(format!("  {DIM}copied:{RESET} {}", ui::format_list(&names)));
+        return lines;
+    }
+
+    let universal_names: Vec<String> = agents
+        .iter()
+        .filter(|a| manager.agents().is_universal(a))
+        .filter_map(|a| manager.agents().get(a).map(|c| c.display_name.clone()))
+        .collect();
+    let symlinked_names: Vec<String> = agents
+        .iter()
+        .filter(|a| !manager.agents().is_universal(a))
+        .filter_map(|a| manager.agents().get(a).map(|c| c.display_name.clone()))
+        .collect();
+
+    if !universal_names.is_empty() {
+        lines.push(format!(
+            "  {GREEN}universal:{RESET} {}",
+            ui::format_list(&universal_names)
+        ));
+    }
+    if !symlinked_names.is_empty() {
+        lines.push(format!(
+            "  {DIM}symlinked:{RESET} {}",
+            ui::format_list(&symlinked_names)
+        ));
+    }
+    lines
 }
 
 // ── Per-skill install result, for grouped output ────────────────────
@@ -657,7 +1020,7 @@ async fn prompt_for_find_skills(manager: &SkillManager) {
             .collect();
         let add_args = AddArgs {
             source: vec!["vercel-labs/skills@find-skills".to_owned()],
-            global: true,
+            global: Some(true),
             agent: Some(agents),
             skill: Some(vec!["find-skills".to_owned()]),
             list: false,
@@ -677,7 +1040,7 @@ async fn prompt_for_find_skills(manager: &SkillManager) {
 /// Options for `run_add` when called programmatically.
 pub struct RunAddOptions {
     pub source: String,
-    pub global: bool,
+    pub global: Option<bool>,
     pub yes: bool,
     pub skill_filter: Option<Vec<String>>,
     pub agent: Option<Vec<String>>,
@@ -713,25 +1076,13 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         args.yes = true;
     }
 
-    // Scope and mode come from flags only — no interactive prompts (matches TS).
-    let scope = if args.global {
-        InstallScope::Global
-    } else {
-        InstallScope::Project
-    };
-    let mode = if args.copy {
-        InstallMode::Copy
-    } else {
-        InstallMode::Symlink
-    };
-
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
 
     // Process each source (TS supports multiple sources).
     let sources = args.source.clone();
     for source in &sources {
-        run_single_source(source, &mut args, &manager, scope, mode, &cwd).await?;
+        run_single_source(source, &mut args, &manager, &cwd).await?;
     }
 
     // Prompt for find-skills on first install (matches TS).
@@ -747,8 +1098,6 @@ async fn run_single_source(
     source: &str,
     args: &mut AddArgs,
     manager: &SkillManager,
-    scope: InstallScope,
-    mode: InstallMode,
     cwd: &Path,
 ) -> Result<()> {
     let parsed = manager.parse_source(source);
@@ -773,7 +1122,7 @@ async fn run_single_source(
 
     // Well-known source: handled via provider API.
     if parsed.source_type == SourceType::WellKnown {
-        return handle_wellknown_source(&parsed, args, manager, scope, mode, cwd).await;
+        return handle_wellknown_source(&parsed, args, manager, cwd).await;
     }
 
     // Git/local source: clone → discover → select → install.
@@ -801,13 +1150,41 @@ async fn run_single_source(
         if skills.len() > 1 { "s" } else { "" }
     );
 
-    // List mode: print and exit early.
+    // List mode: group by plugin, print and exit early (matches TS).
     if args.list {
         println!();
-        println!("{TEXT}Available Skills:{RESET}");
+        println!("\x1b[1mAvailable Skills\x1b[0m");
+
+        let mut grouped: BTreeMap<String, Vec<&Skill>> = BTreeMap::new();
+        let mut ungrouped: Vec<&Skill> = Vec::new();
         for s in &skills {
-            println!("  {TEXT}{}{RESET} {DIM}- {}{RESET}", s.name, s.description);
+            if let Some(ref plugin) = s.plugin_name {
+                grouped.entry(plugin.clone()).or_default().push(s);
+            } else {
+                ungrouped.push(s);
+            }
         }
+
+        for (group, items) in &grouped {
+            let title = kebab_to_title(group);
+            println!("\x1b[1m{title}\x1b[0m");
+            for s in items {
+                println!("  \x1b[36m{}\x1b[0m", s.name);
+                println!("    {DIM}{}{RESET}", s.description);
+            }
+            println!();
+        }
+
+        if !ungrouped.is_empty() {
+            if !grouped.is_empty() {
+                println!("\x1b[1mGeneral\x1b[0m");
+            }
+            for s in &ungrouped {
+                println!("  \x1b[36m{}\x1b[0m", s.name);
+                println!("    {DIM}{}{RESET}", s.description);
+            }
+        }
+
         println!();
         println!("{DIM}Use --skill <name> to install specific skills{RESET}");
         println!();
@@ -816,6 +1193,11 @@ async fn run_single_source(
 
     let selected_skills = select_skills(&skills, args.skill.as_ref(), args.yes)?;
     let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
+
+    let scope = resolve_scope(args.global, args.yes, &target_agents, manager)?;
+    let mode = resolve_mode(args.copy, args.yes)?;
+
+    print_installation_summary(&selected_skills, &target_agents, manager, scope, mode, cwd);
 
     if !args.yes {
         let confirmed: bool = cliclack::confirm("Proceed with installation?")
@@ -838,10 +1220,9 @@ async fn run_single_source(
     print_install_results(&outcomes, cwd, &target_agents, manager);
 
     // Lock file integration.
-    update_lock_file(&parsed, &selected_skills).await;
-
-    // Update local lock for project-scoped installs (matches TS addSkillToLocalLock).
-    if scope == InstallScope::Project {
+    if scope == InstallScope::Global {
+        update_lock_file(&parsed, &selected_skills).await;
+    } else {
         update_local_lock_file(&parsed, &selected_skills, cwd).await;
     }
 
@@ -861,8 +1242,6 @@ async fn handle_wellknown_source(
     parsed: &skill::types::ParsedSource,
     args: &AddArgs,
     manager: &SkillManager,
-    scope: InstallScope,
-    mode: InstallMode,
     cwd: &Path,
 ) -> Result<()> {
     use skill::providers::WellKnownProvider;
@@ -899,6 +1278,9 @@ async fn handle_wellknown_source(
     }
 
     let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
+
+    let scope = resolve_scope(args.global, args.yes, &target_agents, manager)?;
+    let mode = resolve_mode(args.copy, args.yes)?;
 
     let install_opts = InstallOptions {
         scope,

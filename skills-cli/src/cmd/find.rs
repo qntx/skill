@@ -295,7 +295,7 @@ pub async fn run(args: FindArgs) -> Result<()> {
     // Build add args: skills add <pkg> --skill <name>
     let add_args = super::add::AddArgs {
         source: vec![pkg.clone()],
-        global: false,
+        global: None,
         agent: None,
         skill: Some(vec![skill_name.clone()]),
         yes: false,

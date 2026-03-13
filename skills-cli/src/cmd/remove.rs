@@ -205,6 +205,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
 
     println!("{TEXT}Removing skills...{RESET}");
 
+    let agents_for_telemetry = target_agents.clone();
     let results = manager
         .remove_skills(
             &selected,
@@ -247,7 +248,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
     }
 
     // Telemetry (matches TS remove.ts: group by source).
-    send_remove_telemetry(&selected, args.global).await;
+    send_remove_telemetry(&selected, &agents_for_telemetry, args.global).await;
 
     println!();
     println!("\x1b[32m\x1b[1mDone!\x1b[0m");
@@ -255,7 +256,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
     Ok(())
 }
 
-async fn send_remove_telemetry(skills: &[String], global: bool) {
+async fn send_remove_telemetry(skills: &[String], agents: &[AgentId], global: bool) {
     let lock = skill::lock::read_skill_lock().await.ok();
 
     // Group removed skills by source for telemetry.
@@ -272,6 +273,14 @@ async fn send_remove_telemetry(skills: &[String], global: bool) {
         let mut props = HashMap::new();
         props.insert("source".to_owned(), source.clone());
         props.insert("skills".to_owned(), names.join(","));
+        props.insert(
+            "agents".to_owned(),
+            agents
+                .iter()
+                .map(|a| a.as_str().to_owned())
+                .collect::<Vec<_>>()
+                .join(","),
+        );
         if global {
             props.insert("global".to_owned(), "1".to_owned());
         }

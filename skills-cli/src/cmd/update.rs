@@ -145,7 +145,7 @@ pub async fn run() -> Result<()> {
 
         let result = super::add::run_add(RunAddOptions {
             source: install_url,
-            global: true,
+            global: Some(true),
             yes: true,
             skill_filter: Some(vec![update.name.clone()]),
             agent: None,

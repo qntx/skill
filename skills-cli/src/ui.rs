@@ -122,13 +122,22 @@ pub fn shorten_path(path: &std::path::Path) -> String {
 /// Shorten a path relative to a given `cwd`.
 #[must_use]
 pub fn shorten_path_with_cwd(path: &std::path::Path, cwd: &std::path::Path) -> String {
+    // Check cwd first so project-relative paths take priority over home-relative.
+    if let Ok(suffix) = path.strip_prefix(cwd) {
+        return if suffix.as_os_str().is_empty() {
+            ".".to_owned()
+        } else {
+            format!(".{}{}", std::path::MAIN_SEPARATOR, suffix.display())
+        };
+    }
     if let Some(home) = dirs::home_dir()
         && let Ok(suffix) = path.strip_prefix(&home)
     {
-        return format!("~{}{}", std::path::MAIN_SEPARATOR, suffix.display());
-    }
-    if let Ok(suffix) = path.strip_prefix(cwd) {
-        return format!(".{}{}", std::path::MAIN_SEPARATOR, suffix.display());
+        return if suffix.as_os_str().is_empty() {
+            "~".to_owned()
+        } else {
+            format!("~{}{}", std::path::MAIN_SEPARATOR, suffix.display())
+        };
     }
     path.display().to_string()
 }

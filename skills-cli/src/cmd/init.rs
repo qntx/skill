@@ -77,16 +77,21 @@ Describe when this skill should be used.
     std::fs::write(&skill_file, content).into_diagnostic()?;
 
     println!("{TEXT}Initialized skill: {DIM}{skill_name}{RESET}");
-    if has_name {
-        println!("{TEXT}Created: {DIM}{display_path}{RESET}");
-    }
+    println!();
+    println!("{DIM}Created:{RESET}");
+    println!("  {display_path}");
     println!();
     println!("{DIM}Next steps:{RESET}");
-    println!("{DIM}  1. Edit {display_path} to define your skill instructions{RESET}");
-    println!("{DIM}  2. Update the name and description in the frontmatter{RESET}");
-    println!("{DIM}  3. Push to a repo, then run: skills add <owner>/<repo>{RESET}");
+    println!("  1. Edit {TEXT}{display_path}{RESET} to define your skill instructions");
+    println!("  2. Update the {TEXT}name{RESET} and {TEXT}description{RESET} in the frontmatter");
     println!();
-    println!("Discover more skills at {TEXT}https://skills.sh/{RESET}");
+    println!("{DIM}Publishing:{RESET}");
+    println!("  {DIM}GitHub:{RESET}  Push to a repo, then {TEXT}skills add <owner>/<repo>{RESET}");
+    println!(
+        "  {DIM}URL:{RESET}     Host the file, then {TEXT}skills add https://example.com/{display_path}{RESET}"
+    );
+    println!();
+    println!("Browse existing skills for inspiration at {TEXT}https://skills.sh/{RESET}");
     println!();
 
     Ok(())
