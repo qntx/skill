@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
-use console::style;
 use miette::{IntoDiagnostic, Result, miette};
 
 use skill::SkillManager;
@@ -62,30 +61,11 @@ pub struct AddArgs {
     pub full_depth: bool,
 }
 
-fn show_missing_source_error() -> ! {
-    eprintln!();
-    eprintln!(
-        "{} {}",
-        style(" ERROR ").white().on_red().bold(),
-        style("Missing required argument: source").red()
-    );
-    eprintln!();
-    eprintln!("  {}", style("Usage:").dim());
-    eprintln!(
-        "    {} {} {}",
-        style("skills add").cyan(),
-        style("<source>").yellow(),
-        style("[options]").dim()
-    );
-    eprintln!();
-    eprintln!("  {}", style("Example:").dim());
-    eprintln!(
-        "    {} {}",
-        style("skills add").cyan(),
-        style("qntx/skills").yellow()
-    );
-    eprintln!();
-    std::process::exit(1);
+fn missing_source_error() -> miette::Report {
+    miette!(
+        help = "Usage: skills add <source> [options]\nExample: skills add qntx/skills",
+        "Missing required argument: source"
+    )
 }
 
 // ── Skill selection ─────────────────────────────────────────────────
@@ -138,7 +118,7 @@ fn select_skills(
 ///
 /// Matches the TS: universal agents in a locked section, detected agents
 /// pre-selected, search filtering, last-selection memory.
-pub(crate) async fn select_agents(
+pub async fn select_agents(
     manager: &SkillManager,
     agent_arg: Option<&Vec<String>>,
     yes: bool,
@@ -320,7 +300,10 @@ fn classify_result(
     outcome: &mut SkillInstallOutcome,
 ) {
     if outcome.canonical_path.is_none() {
-        outcome.canonical_path = result.canonical_path.clone().or(Some(result.path.clone()));
+        outcome.canonical_path = result
+            .canonical_path
+            .clone()
+            .or_else(|| Some(result.path.clone()));
     }
 
     if manager.agents().is_universal(agent_id) {
@@ -357,12 +340,9 @@ async fn install_wellknown_skills(
                 .get(agent_id)
                 .map_or_else(|| agent_id.to_string(), |c| c.display_name.clone());
 
-            let agent = match manager.agents().get(agent_id) {
-                Some(a) => a,
-                None => {
-                    outcome.failed_agents.push(display_name);
-                    continue;
-                }
+            let Some(agent) = manager.agents().get(agent_id) else {
+                outcome.failed_agents.push(display_name);
+                continue;
             };
 
             match skill::installer::install_wellknown_skill_files(
@@ -531,7 +511,50 @@ fn send_wellknown_telemetry(
     }
 }
 
-// ── find-skills prompt ──────────────────────────────────────────────
+/// Warn when installing from a private GitHub repository.
+///
+/// Matches TS `promptSecurityAdvisory`: skills run with full agent
+/// permissions; a private repo makes third-party auditing impossible.
+async fn prompt_security_advisory(parsed: &skill::types::ParsedSource, yes: bool) -> Result<()> {
+    if yes || parsed.source_type != SourceType::Github {
+        return Ok(());
+    }
+
+    let Some(owner_repo) = skill::source::get_owner_repo(parsed) else {
+        return Ok(());
+    };
+    let Some((owner, repo)) = skill::source::parse_owner_repo(&owner_repo) else {
+        return Ok(());
+    };
+
+    let is_private = skill::lock::is_repo_private(&owner, &repo)
+        .await
+        .ok()
+        .flatten();
+
+    if is_private == Some(true) {
+        println!();
+        println!(
+            "\x1b[33m⚠  Security notice:\x1b[0m {TEXT}{owner}/{repo}{RESET} is a \x1b[33m\x1b[1mprivate\x1b[0m repository."
+        );
+        println!(
+            "{DIM}   Skills run with full agent permissions. Private repos cannot be audited by others.{RESET}"
+        );
+        println!();
+
+        let confirmed: bool = cliclack::confirm("Continue with installation?")
+            .initial_value(true)
+            .interact()
+            .into_diagnostic()?;
+
+        if !confirmed {
+            println!("{DIM}Installation cancelled{RESET}");
+            return Err(miette!("Installation cancelled by user"));
+        }
+    }
+
+    Ok(())
+}
 
 async fn prompt_for_find_skills() {
     if skill::lock::is_prompt_dismissed("findSkillsPrompt")
@@ -601,7 +624,7 @@ pub async fn run_add(opts: RunAddOptions) -> Result<()> {
 /// Run the add command.
 pub async fn run(mut args: AddArgs) -> Result<()> {
     if args.source.is_empty() {
-        show_missing_source_error();
+        return Err(missing_source_error());
     }
 
     if args.all {
@@ -664,6 +687,9 @@ async fn run_single_source(
     if let Some(filter) = &parsed.skill_filter {
         args.skill.get_or_insert_with(Vec::new).push(filter.clone());
     }
+
+    // Security check for private GitHub repos (matches TS promptSecurityAdvisory).
+    prompt_security_advisory(&parsed, args.yes).await?;
 
     // Well-known source: handled via provider API.
     if parsed.source_type == SourceType::WellKnown {

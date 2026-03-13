@@ -164,10 +164,8 @@ pub async fn run(args: ListArgs) -> Result<()> {
                 .split('-')
                 .map(|w| {
                     let mut c = w.chars();
-                    match c.next() {
-                        None => String::new(),
-                        Some(f) => f.to_uppercase().to_string() + c.as_str(),
-                    }
+                    c.next()
+                        .map_or_else(String::new, |f| f.to_uppercase().to_string() + c.as_str())
                 })
                 .collect::<Vec<_>>()
                 .join(" ");

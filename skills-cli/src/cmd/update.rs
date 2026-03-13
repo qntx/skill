@@ -20,7 +20,7 @@ struct UpdateEntry {
     skill_path: Option<String>,
 }
 
-/// Build the install URL from source_url + skill_path (matches TS logic).
+/// Build the install URL from `source_url` + `skill_path` (matches TS logic).
 fn build_install_url(source_url: &str, skill_path: Option<&str>) -> String {
     let Some(sp) = skill_path else {
         return source_url.to_owned();
@@ -53,7 +53,7 @@ pub async fn run() -> Result<()> {
 
     if lock.skills.is_empty() {
         println!("{DIM}No skills tracked in lock file.{RESET}");
-        println!("{DIM}Install skills with{RESET} {TEXT}npx skills add <package>{RESET}");
+        println!("{DIM}Install skills with{RESET} {TEXT}skills add <package>{RESET}");
         return Ok(());
     }
 

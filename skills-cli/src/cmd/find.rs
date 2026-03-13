@@ -94,7 +94,7 @@ fn search_api_sync(query: &str) -> Vec<SearchSkill> {
         .unwrap_or_default()
 }
 
-/// Cached search result with the actual SearchSkill data preserved.
+/// Cached search result with the actual `SearchSkill` data preserved.
 struct InteractiveResult {
     pkg: String,
     skill_name: String,
@@ -121,6 +121,7 @@ fn to_fzf_items(skills: &[SearchSkill]) -> Vec<ui::FzfItem> {
 }
 
 /// Run interactive fzf search, returning selected skill info.
+#[allow(clippy::expect_used, clippy::unwrap_in_result)]
 fn run_interactive(
     cache: &Arc<Mutex<HashMap<String, Vec<SearchSkill>>>>,
 ) -> Result<Option<InteractiveResult>> {
@@ -130,6 +131,7 @@ fn run_interactive(
             return Vec::new();
         }
 
+        #[allow(clippy::expect_used)]
         let mut lock = cache_ref.lock().expect("cache lock");
         let skills = lock
             .entry(query.to_owned())
@@ -141,12 +143,14 @@ fn run_interactive(
     match result {
         ui::FzfResult::Selected(value) => {
             // Parse "owner/repo@skillname" back into components
+            #[allow(clippy::option_if_let_else)]
             if let Some(at_pos) = value.rfind('@') {
                 let pkg = &value[..at_pos];
                 let skill_name = &value[at_pos + 1..];
 
-                // Look up slug from cache
-                let lock = cache.lock().expect("cache lock");
+                // Look up slug from cache (Mutex::lock only fails if poisoned, which is unrecoverable)
+                #[allow(clippy::expect_used)]
+                let lock = cache.lock().expect("cache lock poisoned");
                 let slug = lock
                     .values()
                     .flat_map(|v| v.iter())
@@ -168,7 +172,7 @@ fn run_interactive(
                 }))
             } else {
                 Ok(Some(InteractiveResult {
-                    pkg: value.clone(),
+                    pkg: value,
                     skill_name: String::new(),
                     slug: String::new(),
                 }))
@@ -186,15 +190,12 @@ async fn is_repo_public(pkg: &str) -> bool {
     }
     let url = format!("https://api.github.com/repos/{}/{}", parts[0], parts[1]);
     let client = reqwest::Client::new();
-    match client
+    client
         .get(&url)
         .header("User-Agent", "skills-cli")
         .send()
         .await
-    {
-        Ok(resp) => resp.status().is_success(),
-        Err(_) => false,
-    }
+        .is_ok_and(|resp| resp.status().is_success())
 }
 
 /// Run the find command.
@@ -237,7 +238,7 @@ pub async fn run(args: FindArgs) -> Result<()> {
             return Ok(());
         }
 
-        println!("{DIM}Install with{RESET} npx skills add <owner/repo@skill>");
+        println!("{DIM}Install with{RESET} skills add <owner/repo@skill>");
         println!();
 
         for skill in data.skills.iter().take(6) {

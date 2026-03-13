@@ -23,7 +23,7 @@ pub async fn run() -> Result<()> {
     if !lock_path.exists() {
         println!("{DIM}No skills-lock.json found.{RESET}");
         println!(
-            "{DIM}Install skills with{RESET} {TEXT}npx skills add <package>{RESET} {DIM}to create one.{RESET}"
+            "{DIM}Install skills with{RESET} {TEXT}skills add <package>{RESET} {DIM}to create one.{RESET}"
         );
         return Ok(());
     }
@@ -58,8 +58,8 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    let mut success = 0u32;
-    let mut failed = 0u32;
+    let mut success = 0usize;
+    let mut failed = 0usize;
 
     // Install remote skills grouped by source via internal run_add.
     // TS installs only to universal agents for project-level lock installs.
@@ -77,13 +77,13 @@ pub async fn run() -> Result<()> {
 
         match result {
             Ok(()) => {
-                success += skill_names.len() as u32;
+                success += skill_names.len();
                 for name in skill_names {
                     println!("  {TEXT}✓{RESET} {name}");
                 }
             }
             Err(e) => {
-                failed += skill_names.len() as u32;
+                failed += skill_names.len();
                 for name in skill_names {
                     println!("  {DIM}✗ {name}{RESET}");
                 }
@@ -104,9 +104,9 @@ pub async fn run() -> Result<()> {
         };
         if let Err(e) = super::sync::run(sync_args).await {
             tracing::warn!(error = %e, "node_modules sync during install failed");
-            failed += node_modules_skills.len() as u32;
+            failed += node_modules_skills.len();
         } else {
-            success += node_modules_skills.len() as u32;
+            success += node_modules_skills.len();
         }
     }
 

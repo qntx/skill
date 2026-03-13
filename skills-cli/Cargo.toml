@@ -21,7 +21,6 @@ tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 miette = { workspace = true }
 cliclack = { workspace = true }
-console = { workspace = true }
 crossterm = { workspace = true }
 urlencoding = { workspace = true }
 reqwest = { workspace = true }

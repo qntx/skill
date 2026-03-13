@@ -76,7 +76,7 @@ async fn filter_outdated(skills: Vec<Skill>, cwd: &std::path::Path) -> (Vec<Skil
             .await
             .unwrap_or_else(|_| local_lock::LocalSkillLockFile {
                 version: 1,
-                skills: Default::default(),
+                skills: std::collections::BTreeMap::default(),
             });
 
     let mut outdated = Vec::new();
@@ -87,11 +87,12 @@ async fn filter_outdated(skills: Vec<Skill>, cwd: &std::path::Path) -> (Vec<Skil
             .await
             .unwrap_or_default();
 
-        if let Some(entry) = lock.skills.get(&skill_item.name) {
-            if entry.computed_hash == current_hash && !current_hash.is_empty() {
-                up_to_date += 1;
-                continue;
-            }
+        if let Some(entry) = lock.skills.get(&skill_item.name)
+            && entry.computed_hash == current_hash
+            && !current_hash.is_empty()
+        {
+            up_to_date += 1;
+            continue;
         }
 
         outdated.push(skill_item);
@@ -191,7 +192,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
             // Derive npm package source from skill path relative to node_modules.
             let source = skill_item
                 .path
-                .strip_prefix(&cwd.join("node_modules"))
+                .strip_prefix(cwd.join("node_modules"))
                 .ok()
                 .and_then(|rel| rel.components().next())
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())

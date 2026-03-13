@@ -8,7 +8,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use clap::Args;
-use console::style;
 use miette::{IntoDiagnostic, Result, miette};
 
 use skill::SkillManager;
@@ -101,7 +100,7 @@ fn validate_agents(manager: &SkillManager, agent_names: &[String]) -> Result<Vec
                 "Unknown agent: \"{name}\". Available agents: {}",
                 all_ids
                     .iter()
-                    .map(|a| a.as_str())
+                    .map(AgentId::as_str)
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -134,6 +133,7 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         return Ok(());
     }
 
+    #[allow(clippy::option_if_let_else, clippy::single_match_else)]
     let selected: Vec<String> = if args.all {
         installed.clone()
     } else if !args.skills.is_empty() {
@@ -166,7 +166,7 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
     if !args.yes && !args.all {
         println!("{TEXT}Skills to remove:{RESET}");
         for s in &selected {
-            println!("  {} {s}", style("•").red());
+            println!("  \x1b[31m•\x1b[0m {s}");
         }
         println!();
 
@@ -192,7 +192,7 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
             &RemoveOptions {
                 scope,
                 agents: target_agents,
-                cwd: Some(cwd),
+                cwd: Some(cwd.clone()),
             },
         )
         .await
@@ -208,17 +208,22 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
     if fail_count > 0 {
         println!("{DIM}✗ Failed to remove {fail_count} skill(s){RESET}");
         for r in &results {
-            if !r.success {
-                if let Some(ref err) = r.error {
-                    println!("  {DIM}{}: {err}{RESET}", r.skill);
-                }
+            if !r.success
+                && let Some(ref err) = r.error
+            {
+                println!("  {DIM}{}: {err}{RESET}", r.skill);
             }
         }
     }
 
+    // Clean up lock files: global lock for --global, local lock for project scope.
     if args.global {
         for name in &selected {
             let _ = skill::lock::remove_skill_from_lock(name).await;
+        }
+    } else {
+        for name in &selected {
+            let _ = skill::local_lock::remove_skill_from_local_lock(name, &cwd).await;
         }
     }
 
@@ -238,8 +243,7 @@ async fn send_remove_telemetry(skills: &[String], global: bool) {
         let source = lock
             .as_ref()
             .and_then(|l| l.skills.get(name))
-            .map(|e| e.source.clone())
-            .unwrap_or_else(|| "unknown".to_owned());
+            .map_or_else(|| "unknown".to_owned(), |e| e.source.clone());
         by_source.entry(source).or_default().push(name.clone());
     }
 
