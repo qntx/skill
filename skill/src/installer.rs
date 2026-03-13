@@ -13,10 +13,6 @@ use crate::types::{
     ListOptions, SKILLS_SUBDIR, Skill,
 };
 
-// ---------------------------------------------------------------------------
-// Name sanitization
-// ---------------------------------------------------------------------------
-
 /// Sanitize a skill name for safe use as a directory name.
 ///
 /// Converts to lowercase, replaces unsafe characters with hyphens, strips
@@ -61,10 +57,6 @@ pub fn sanitize_name(name: &str) -> String {
 
     result.to_owned()
 }
-
-// ---------------------------------------------------------------------------
-// Path helpers
-// ---------------------------------------------------------------------------
 
 /// Validate that `target_path` is within `base_path`.
 fn is_path_safe(base_path: &Path, target_path: &Path) -> bool {
@@ -115,10 +107,6 @@ pub fn agent_base_dir(
         InstallScope::Project => cwd.join(&agent.skills_dir),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Installation
-// ---------------------------------------------------------------------------
 
 /// Install a local skill for a single agent.
 ///
@@ -401,10 +389,6 @@ pub async fn install_wellknown_skill_files(
     })
 }
 
-// ---------------------------------------------------------------------------
-// Listing
-// ---------------------------------------------------------------------------
-
 /// List all installed skills from canonical and agent-specific directories.
 ///
 /// Matches the Vercel TS `listInstalledSkills`: detects which agents are
@@ -598,10 +582,6 @@ pub async fn is_skill_installed(
 pub fn get_canonical_path(skill_name: &str, scope: InstallScope, cwd: &Path) -> PathBuf {
     canonical_skills_dir(scope, cwd).join(sanitize_name(skill_name))
 }
-
-// ---------------------------------------------------------------------------
-// Filesystem helpers
-// ---------------------------------------------------------------------------
 
 async fn clean_and_create(path: &Path) -> Result<()> {
     let _ = tokio::fs::remove_dir_all(path).await;

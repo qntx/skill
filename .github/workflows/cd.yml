@@ -12,5 +12,5 @@ jobs:
   call-cd:
     uses: qntx/workflows/.github/workflows/rust-cd.yml@main
     with:
-      bin: skill
+      bin: skills
       package: skill-cli

@@ -277,10 +277,6 @@ pub fn sanitize_subpath(subpath: &str) -> Result<String> {
     Ok(subpath.to_owned())
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn is_local_path(input: &str) -> bool {
     if Path::new(input).is_absolute() {
         return true;

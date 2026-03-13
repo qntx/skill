@@ -9,10 +9,6 @@ use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf};
 
 use serde::Deserialize;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Deserialize)]
 struct MarketplaceManifest {
     metadata: Option<MarketplaceMetadata>,
@@ -37,10 +33,6 @@ struct PluginManifest {
     skills: Option<Vec<String>>,
     name: Option<String>,
 }
-
-// ---------------------------------------------------------------------------
-// Path helpers
-// ---------------------------------------------------------------------------
 
 /// Check if a path is contained within a base directory.
 fn is_contained_in(target_path: &Path, base_path: &Path) -> bool {
@@ -82,10 +74,6 @@ fn is_valid_relative_path(path: &str) -> bool {
     path.starts_with("./")
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 /// Extract skill search directories from plugin manifests.
 ///
 /// Handles both `marketplace.json` (multi-plugin) and `plugin.json` (single
@@ -121,44 +109,45 @@ pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
     // Try marketplace.json (multi-plugin catalog).
     if let Ok(content) =
         tokio::fs::read_to_string(base_path.join(".claude-plugin/marketplace.json")).await
-        && let Ok(manifest) = serde_json::from_str::<MarketplaceManifest>(&content) {
-            let plugin_root = manifest
-                .metadata
-                .as_ref()
-                .and_then(|m| m.plugin_root.as_deref());
+        && let Ok(manifest) = serde_json::from_str::<MarketplaceManifest>(&content)
+    {
+        let plugin_root = manifest
+            .metadata
+            .as_ref()
+            .and_then(|m| m.plugin_root.as_deref());
 
-            let valid_plugin_root =
-                plugin_root.is_none_or(is_valid_relative_path);
+        let valid_plugin_root = plugin_root.is_none_or(is_valid_relative_path);
 
-            if valid_plugin_root {
-                for plugin in manifest.plugins.iter().flatten() {
-                    // Skip remote sources (object with source/repo) — only handle local
-                    // string paths.
-                    let source_str = match &plugin.source {
-                        Some(serde_json::Value::String(s)) => {
-                            if !is_valid_relative_path(s) {
-                                continue;
-                            }
-                            Some(s.as_str())
+        if valid_plugin_root {
+            for plugin in manifest.plugins.iter().flatten() {
+                // Skip remote sources (object with source/repo) — only handle local
+                // string paths.
+                let source_str = match &plugin.source {
+                    Some(serde_json::Value::String(s)) => {
+                        if !is_valid_relative_path(s) {
+                            continue;
                         }
-                        None => None,
-                        _ => continue, // object or other non-string → remote, skip
-                    };
+                        Some(s.as_str())
+                    }
+                    None => None,
+                    _ => continue, // object or other non-string → remote, skip
+                };
 
-                    let plugin_base = base_path
-                        .join(plugin_root.unwrap_or(""))
-                        .join(source_str.unwrap_or(""));
-                    add_plugin_skill_paths(&plugin_base, plugin.skills.as_ref(), &mut search_dirs);
-                }
+                let plugin_base = base_path
+                    .join(plugin_root.unwrap_or(""))
+                    .join(source_str.unwrap_or(""));
+                add_plugin_skill_paths(&plugin_base, plugin.skills.as_ref(), &mut search_dirs);
             }
         }
+    }
 
     // Try plugin.json (single plugin at root).
     if let Ok(content) =
         tokio::fs::read_to_string(base_path.join(".claude-plugin/plugin.json")).await
-        && let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content) {
-            add_plugin_skill_paths(base_path, manifest.skills.as_ref(), &mut search_dirs);
-        }
+        && let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content)
+    {
+        add_plugin_skill_paths(base_path, manifest.skills.as_ref(), &mut search_dirs);
+    }
 
     search_dirs
 }
@@ -174,73 +163,74 @@ pub async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> 
     // Try marketplace.json (multi-plugin catalog).
     if let Ok(content) =
         tokio::fs::read_to_string(base_path.join(".claude-plugin/marketplace.json")).await
-        && let Ok(manifest) = serde_json::from_str::<MarketplaceManifest>(&content) {
-            let plugin_root = manifest
-                .metadata
-                .as_ref()
-                .and_then(|m| m.plugin_root.as_deref());
+        && let Ok(manifest) = serde_json::from_str::<MarketplaceManifest>(&content)
+    {
+        let plugin_root = manifest
+            .metadata
+            .as_ref()
+            .and_then(|m| m.plugin_root.as_deref());
 
-            let valid_plugin_root =
-                plugin_root.is_none_or(is_valid_relative_path);
+        let valid_plugin_root = plugin_root.is_none_or(is_valid_relative_path);
 
-            if valid_plugin_root {
-                for plugin in manifest.plugins.iter().flatten() {
-                    let Some(ref plugin_name) = plugin.name else {
-                        continue;
-                    };
+        if valid_plugin_root {
+            for plugin in manifest.plugins.iter().flatten() {
+                let Some(ref plugin_name) = plugin.name else {
+                    continue;
+                };
 
-                    let source_str = match &plugin.source {
-                        Some(serde_json::Value::String(s)) => {
-                            if !is_valid_relative_path(s) {
-                                continue;
-                            }
-                            Some(s.as_str())
+                let source_str = match &plugin.source {
+                    Some(serde_json::Value::String(s)) => {
+                        if !is_valid_relative_path(s) {
+                            continue;
                         }
-                        None => None,
-                        _ => continue,
-                    };
-
-                    let plugin_base = base_path
-                        .join(plugin_root.unwrap_or(""))
-                        .join(source_str.unwrap_or(""));
-
-                    if !is_contained_in(&plugin_base, base_path) {
-                        continue;
+                        Some(s.as_str())
                     }
+                    None => None,
+                    _ => continue,
+                };
 
-                    if let Some(skill_list) = &plugin.skills {
-                        for skill_path in skill_list {
-                            if !is_valid_relative_path(skill_path) {
-                                continue;
-                            }
-                            let skill_dir = plugin_base.join(skill_path);
-                            if is_contained_in(&skill_dir, base_path) {
-                                let resolved = normalize_resolve(&skill_dir);
-                                groupings.insert(resolved, plugin_name.clone());
-                            }
-                        }
-                    }
+                let plugin_base = base_path
+                    .join(plugin_root.unwrap_or(""))
+                    .join(source_str.unwrap_or(""));
+
+                if !is_contained_in(&plugin_base, base_path) {
+                    continue;
                 }
-            }
-        }
 
-    // Try plugin.json (single plugin at root).
-    if let Ok(content) =
-        tokio::fs::read_to_string(base_path.join(".claude-plugin/plugin.json")).await
-        && let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content)
-            && let Some(ref plugin_name) = manifest.name
-                && let Some(ref skill_list) = manifest.skills {
+                if let Some(skill_list) = &plugin.skills {
                     for skill_path in skill_list {
                         if !is_valid_relative_path(skill_path) {
                             continue;
                         }
-                        let skill_dir = base_path.join(skill_path);
+                        let skill_dir = plugin_base.join(skill_path);
                         if is_contained_in(&skill_dir, base_path) {
                             let resolved = normalize_resolve(&skill_dir);
                             groupings.insert(resolved, plugin_name.clone());
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Try plugin.json (single plugin at root).
+    if let Ok(content) =
+        tokio::fs::read_to_string(base_path.join(".claude-plugin/plugin.json")).await
+        && let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content)
+        && let Some(ref plugin_name) = manifest.name
+        && let Some(ref skill_list) = manifest.skills
+    {
+        for skill_path in skill_list {
+            if !is_valid_relative_path(skill_path) {
+                continue;
+            }
+            let skill_dir = base_path.join(skill_path);
+            if is_contained_in(&skill_dir, base_path) {
+                let resolved = normalize_resolve(&skill_dir);
+                groupings.insert(resolved, plugin_name.clone());
+            }
+        }
+    }
 
     groupings
 }

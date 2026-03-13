@@ -112,10 +112,6 @@ impl SkillManager {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
     }
 
-    // -----------------------------------------------------------------------
-    // Agent management
-    // -----------------------------------------------------------------------
-
     /// Access the agent registry (immutable).
     #[must_use]
     pub const fn agents(&self) -> &AgentRegistry {
@@ -132,10 +128,6 @@ impl SkillManager {
         self.agents.detect_installed().await
     }
 
-    // -----------------------------------------------------------------------
-    // Provider management
-    // -----------------------------------------------------------------------
-
     /// Access the provider registry.
     #[must_use]
     pub const fn providers(&self) -> &ProviderRegistry {
@@ -146,10 +138,6 @@ impl SkillManager {
     pub fn register_provider(&mut self, provider: impl crate::providers::HostProvider + 'static) {
         self.providers.register(provider);
     }
-
-    // -----------------------------------------------------------------------
-    // Discovery
-    // -----------------------------------------------------------------------
 
     /// Parse a source string into a [`ParsedSource`].
     #[must_use]
@@ -184,10 +172,6 @@ impl SkillManager {
         crate::skills::discover_skills(path, Some(subpath), options).await
     }
 
-    // -----------------------------------------------------------------------
-    // Installation
-    // -----------------------------------------------------------------------
-
     /// Install a discovered skill for a specific agent.
     ///
     /// # Errors
@@ -207,10 +191,6 @@ impl SkillManager {
         installer::install_skill_for_agent(skill, agent, &self.agents, options).await
     }
 
-    // -----------------------------------------------------------------------
-    // Listing
-    // -----------------------------------------------------------------------
-
     /// List all installed skills.
     ///
     /// # Errors
@@ -219,10 +199,6 @@ impl SkillManager {
     pub async fn list_installed(&self, options: &ListOptions) -> Result<Vec<InstalledSkill>> {
         installer::list_installed_skills(&self.agents, options).await
     }
-
-    // -----------------------------------------------------------------------
-    // Removal
-    // -----------------------------------------------------------------------
 
     /// Remove installed skills by name.
     ///

@@ -5,10 +5,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// Agent types
-// ---------------------------------------------------------------------------
-
 /// Unique identifier for an agent.
 ///
 /// This is a newtype over `String` rather than a closed enum, allowing agent
@@ -59,10 +55,6 @@ pub struct AgentConfig {
     /// Whether this agent appears in the universal agent list.
     pub show_in_universal_list: bool,
 }
-
-// ---------------------------------------------------------------------------
-// Skill types
-// ---------------------------------------------------------------------------
 
 /// A discovered local skill parsed from a `SKILL.md` file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,10 +127,6 @@ pub struct WellKnownIndex {
     pub skills: Vec<WellKnownSkillEntry>,
 }
 
-// ---------------------------------------------------------------------------
-// Source types
-// ---------------------------------------------------------------------------
-
 /// The type of a parsed skill source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -183,10 +171,6 @@ pub struct ParsedSource {
     /// Skill name filter from `@skill` syntax.
     pub skill_filter: Option<String>,
 }
-
-// ---------------------------------------------------------------------------
-// Installation types
-// ---------------------------------------------------------------------------
 
 /// Installation mode: symlink (default) or copy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -244,10 +228,6 @@ pub struct InstalledSkill {
     pub agents: Vec<AgentId>,
 }
 
-// ---------------------------------------------------------------------------
-// Options types
-// ---------------------------------------------------------------------------
-
 /// Options for skill discovery.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DiscoverOptions {
@@ -289,10 +269,6 @@ pub struct RemoveOptions {
     /// Override the working directory.
     pub cwd: Option<PathBuf>,
 }
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
 
 /// The canonical agents directory name.
 pub const AGENTS_DIR: &str = ".agents";
