@@ -1,11 +1,15 @@
 //! `skills update` command implementation.
+//!
+//! Matches the TS `cli.ts` `runUpdate` UX: plain console output with ANSI
+//! colors, skipped skills handling.
 
 use std::collections::HashMap;
 
-use console::style;
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 
-use crate::ui;
+const DIM: &str = "\x1b[38;5;102m";
+const TEXT: &str = "\x1b[38;5;145m";
+const RESET: &str = "\x1b[0m";
 
 struct UpdateEntry {
     name: String,
@@ -15,30 +19,26 @@ struct UpdateEntry {
 
 /// Run the update command.
 pub async fn run() -> Result<()> {
-    cliclack::intro(style(" skills update ").on_cyan().black()).into_diagnostic()?;
-
-    let spinner = cliclack::spinner();
-    spinner.start("Checking for updates...");
+    println!("{TEXT}Checking for skill updates...{RESET}");
+    println!();
 
     let lock = skill::lock::read_skill_lock()
         .await
         .map_err(|e| miette::miette!("{e}"))?;
 
     if lock.skills.is_empty() {
-        spinner.stop("No skills tracked in lock file.");
-        cliclack::outro(format!(
-            "Install skills with {}",
-            style("skills add <package>").cyan()
-        ))
-        .into_diagnostic()?;
+        println!("{DIM}No skills tracked in lock file.{RESET}");
+        println!("{DIM}Install skills with{RESET} {TEXT}skills add <package>{RESET}");
         return Ok(());
     }
 
     let token = skill::lock::get_github_token();
     let mut updates: Vec<UpdateEntry> = Vec::new();
+    let mut skipped = 0usize;
 
     for (name, entry) in &lock.skills {
         if entry.skill_folder_hash.is_empty() || entry.skill_path.is_none() {
+            skipped += 1;
             continue;
         }
 
@@ -55,20 +55,27 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    if updates.is_empty() {
-        spinner.stop(format!("{} All skills are up to date", style("✓").green()));
-        cliclack::outro("Done").into_diagnostic()?;
+    let checked_count = lock.skills.len() - skipped;
+
+    if checked_count == 0 {
+        println!("{DIM}No skills to check.{RESET}");
         return Ok(());
     }
 
-    spinner.stop(format!("Found {} update(s)", style(updates.len()).yellow()));
+    if updates.is_empty() {
+        println!("{TEXT}✓ All skills are up to date{RESET}");
+        println!();
+        return Ok(());
+    }
+
+    println!("{TEXT}Found {} update(s){RESET}", updates.len());
+    println!();
 
     let mut success_count = 0u32;
     let mut fail_count = 0u32;
 
     for update in &updates {
-        let spinner = cliclack::spinner();
-        spinner.start(format!("Updating {}...", update.name));
+        println!("{TEXT}Updating {}...{RESET}", update.name);
 
         let mut install_url = update.source_url.clone();
         if let Some(ref sp) = update.skill_path {
@@ -95,24 +102,21 @@ pub async fn run() -> Result<()> {
         match output {
             Ok(o) if o.status.success() => {
                 success_count += 1;
-                spinner.stop(format!("{} Updated {}", style("✓").green(), update.name));
+                println!("  {TEXT}✓{RESET} Updated {}", update.name);
             }
             _ => {
                 fail_count += 1;
-                spinner.stop(format!(
-                    "{} Failed to update {}",
-                    style("✗").red(),
-                    update.name
-                ));
+                println!("  {DIM}✗ Failed to update {}{RESET}", update.name);
             }
         }
     }
 
+    println!();
     if success_count > 0 {
-        ui::print_success(&format!("Updated {success_count} skill(s)"));
+        println!("{TEXT}✓ Updated {success_count} skill(s){RESET}");
     }
     if fail_count > 0 {
-        ui::print_error(&format!("Failed to update {fail_count} skill(s)"));
+        println!("{DIM}Failed to update {fail_count} skill(s){RESET}");
     }
 
     // Telemetry
@@ -122,6 +126,6 @@ pub async fn run() -> Result<()> {
     props.insert("failCount".to_owned(), fail_count.to_string());
     skill::telemetry::track("update", props);
 
-    cliclack::outro("Done").into_diagnostic()?;
+    println!();
     Ok(())
 }

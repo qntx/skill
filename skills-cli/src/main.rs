@@ -51,9 +51,11 @@ enum Commands {
     Init(cmd::init::InitArgs),
 
     /// Restore skills from skills-lock.json.
+    #[command(name = "experimental_install")]
     ExperimentalInstall,
 
     /// Sync skills from `node_modules` into agent directories.
+    #[command(name = "experimental_sync")]
     ExperimentalSync(cmd::sync::SyncArgs),
 }
 
@@ -71,15 +73,32 @@ async fn main() -> miette::Result<()> {
             ui::show_banner(env!("CARGO_PKG_VERSION"));
         }
         Some(cmd) => match cmd {
-            Commands::Add(args) => cmd::add::run(args).await?,
+            Commands::Add(args) => {
+                ui::show_logo();
+                cmd::add::run(args).await?;
+            }
             Commands::Remove(args) => cmd::remove::run(args).await?,
             Commands::List(args) => cmd::list::run(args).await?,
-            Commands::Find(args) => cmd::find::run(args).await?,
+            Commands::Find(args) => {
+                ui::show_logo();
+                println!();
+                cmd::find::run(args).await?;
+            }
             Commands::Check => cmd::check::run().await?,
             Commands::Update => cmd::update::run().await?,
-            Commands::Init(args) => cmd::init::run(&args)?,
-            Commands::ExperimentalInstall => cmd::install_lock::run().await?,
-            Commands::ExperimentalSync(args) => cmd::sync::run(args).await?,
+            Commands::Init(args) => {
+                ui::show_logo();
+                println!();
+                cmd::init::run(&args)?;
+            }
+            Commands::ExperimentalInstall => {
+                ui::show_logo();
+                cmd::install_lock::run().await?;
+            }
+            Commands::ExperimentalSync(args) => {
+                ui::show_logo();
+                cmd::sync::run(args).await?;
+            }
         },
     }
 

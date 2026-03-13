@@ -2,17 +2,23 @@
 //!
 //! Matches the TS `list.ts` UX: groups skills by plugin name (from lock
 //! file), displays agent info per skill, and supports JSON output.
+//! Uses plain console output (no cliclack framing) to match TS style.
 
 use std::collections::BTreeMap;
 
 use clap::Args;
-use console::style;
 use miette::{IntoDiagnostic, Result};
 
 use skill::SkillManager;
 use skill::types::{AgentId, InstallScope, ListOptions};
 
 use crate::ui;
+
+const DIM: &str = "\x1b[38;5;102m";
+const CYAN: &str = "\x1b[36m";
+const YELLOW: &str = "\x1b[33m";
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
 
 /// Arguments for the `list` command.
 #[derive(Args)]
@@ -57,7 +63,7 @@ pub async fn run(args: ListArgs) -> Result<()> {
         .await
         .map_err(|e| miette::miette!("{e}"))?;
 
-    // JSON mode — raw output, no cliclack framing
+    // JSON mode — raw output
     if args.json {
         let json_output: Vec<serde_json::Value> = installed
             .iter()
@@ -84,21 +90,16 @@ pub async fn run(args: ListArgs) -> Result<()> {
 
     let scope_label = if args.global { "Global" } else { "Project" };
 
-    cliclack::intro(style(format!(" {scope_label} Skills ")).on_cyan().black())
-        .into_diagnostic()?;
-
     if installed.is_empty() {
-        let hint = if args.global {
-            "Try listing project skills without -g"
+        println!(
+            "{DIM}No {} skills found.{RESET}",
+            scope_label.to_lowercase()
+        );
+        if args.global {
+            println!("{DIM}Try listing project skills without -g{RESET}");
         } else {
-            "Try listing global skills with -g"
-        };
-        cliclack::outro(format!(
-            "{}  {}",
-            style(format!("No {scope_label} skills found.")).dim(),
-            style(hint).dim()
-        ))
-        .into_diagnostic()?;
+            println!("{DIM}Try listing global skills with -g{RESET}");
+        }
         return Ok(());
     }
 
@@ -112,48 +113,85 @@ pub async fn run(args: ListArgs) -> Result<()> {
                 last_selected_agents: None,
             });
 
+    // Group skills by plugin
     let mut grouped: BTreeMap<String, Vec<&skill::types::InstalledSkill>> = BTreeMap::new();
+    let mut ungrouped: Vec<&skill::types::InstalledSkill> = Vec::new();
+
     for s in &installed {
         let plugin = lock
             .skills
             .get(&s.name)
             .and_then(|e| e.plugin_name.clone())
             .unwrap_or_default();
-        grouped.entry(plugin).or_default().push(s);
-    }
-
-    for (plugin, skills) in &grouped {
-        if !plugin.is_empty() {
-            cliclack::log::info(format!("▸ {plugin}")).into_diagnostic()?;
-        }
-
-        for skill_item in skills {
-            let short_path = ui::shorten_path(&skill_item.canonical_path);
-            let agent_names: Vec<String> = skill_item
-                .agents
-                .iter()
-                .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
-                .collect();
-
-            let agent_info = if agent_names.is_empty() {
-                format!("{}", style("not linked").yellow())
-            } else {
-                ui::format_list(&agent_names)
-            };
-
-            cliclack::log::success(format!(
-                "{} {}  agents: {agent_info}",
-                style(&skill_item.name).cyan(),
-                style(&short_path).dim()
-            ))
-            .into_diagnostic()?;
+        if plugin.is_empty() {
+            ungrouped.push(s);
+        } else {
+            grouped.entry(plugin).or_default().push(s);
         }
     }
 
-    cliclack::outro(format!(
-        "{} skill(s) installed",
-        style(installed.len()).green()
-    ))
-    .into_diagnostic()?;
+    let has_groups = !grouped.is_empty();
+
+    println!("{BOLD}{scope_label} Skills{RESET}");
+    println!();
+
+    let print_skill = |skill_item: &skill::types::InstalledSkill, indent: bool| {
+        let prefix = if indent { "  " } else { "" };
+        let short_path = ui::shorten_path_with_cwd(&skill_item.canonical_path, &cwd);
+        let agent_names: Vec<String> = skill_item
+            .agents
+            .iter()
+            .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
+            .collect();
+
+        let agent_info = if agent_names.is_empty() {
+            format!("{YELLOW}not linked{RESET}")
+        } else {
+            ui::format_list(&agent_names)
+        };
+
+        println!(
+            "{prefix}{CYAN}{}{RESET} {DIM}{short_path}{RESET}",
+            skill_item.name
+        );
+        println!("{prefix}  {DIM}Agents:{RESET} {agent_info}");
+    };
+
+    if has_groups {
+        for (plugin, skills) in &grouped {
+            // Convert kebab-case to Title Case
+            let title: String = plugin
+                .split('-')
+                .map(|w| {
+                    let mut c = w.chars();
+                    match c.next() {
+                        None => String::new(),
+                        Some(f) => f.to_uppercase().to_string() + c.as_str(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            println!("{BOLD}{title}{RESET}");
+            for skill_item in skills {
+                print_skill(skill_item, true);
+            }
+            println!();
+        }
+
+        if !ungrouped.is_empty() {
+            println!("{BOLD}General{RESET}");
+            for skill_item in &ungrouped {
+                print_skill(skill_item, true);
+            }
+            println!();
+        }
+    } else {
+        for skill_item in &installed {
+            print_skill(skill_item, false);
+        }
+        println!();
+    }
+
     Ok(())
 }

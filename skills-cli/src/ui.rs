@@ -7,7 +7,6 @@
 use std::collections::HashSet;
 use std::io::{self, Write};
 
-use console::style;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     terminal,
@@ -71,10 +70,10 @@ pub fn show_logo() {
 }
 
 /// Print the full banner (logo + version + usage hints).
-pub fn show_banner(version: &str) {
+pub fn show_banner(_version: &str) {
     show_logo();
     println!();
-    println!("{DIM}The open agent skills ecosystem  v{version}{RESET}");
+    println!("{DIM}The open agent skills ecosystem{RESET}");
     println!();
     println!(
         "  {DIM}${RESET} {TEXT}skills add {DIM}<package>{RESET}        {DIM}Add a new skill{RESET}"
@@ -112,39 +111,47 @@ pub fn show_banner(version: &str) {
     println!();
 }
 
-/// Shorten a path for display by replacing the home directory with `~`.
+/// Shorten a path for display by replacing the home directory with `~`
+/// and the current directory with `.`.
 #[must_use]
 pub fn shorten_path(path: &std::path::Path) -> String {
+    shorten_path_with_cwd(path, &std::env::current_dir().unwrap_or_default())
+}
+
+/// Shorten a path relative to a given `cwd`.
+#[must_use]
+pub fn shorten_path_with_cwd(path: &std::path::Path, cwd: &std::path::Path) -> String {
     if let Some(home) = dirs::home_dir()
         && let Ok(suffix) = path.strip_prefix(&home)
     {
-        return format!("~/{}", suffix.display());
+        return format!("~{}{}", std::path::MAIN_SEPARATOR, suffix.display());
+    }
+    if let Ok(suffix) = path.strip_prefix(cwd) {
+        return format!(".{}{}", std::path::MAIN_SEPARATOR, suffix.display());
     }
     path.display().to_string()
 }
 
-/// Format items as `"a, b and c"`.
+/// Format items as `"a, b, c"`, truncating with `"+N more"` when needed.
+///
+/// Matches the TypeScript `formatList(items, maxShow = 5)` behaviour.
 #[must_use]
 pub fn format_list(items: &[String]) -> String {
-    match items.len() {
-        0 => String::new(),
-        1 => items[0].clone(),
-        _ => {
-            let last = &items[items.len() - 1];
-            let rest = &items[..items.len() - 1];
-            format!("{} and {last}", rest.join(", "))
-        }
+    format_list_max(items, 5)
+}
+
+/// Format with a custom truncation threshold.
+#[must_use]
+pub fn format_list_max(items: &[String], max_show: usize) -> String {
+    if items.is_empty() {
+        return String::new();
     }
-}
-
-/// Print a success line with green check mark.
-pub fn print_success(text: &str) {
-    println!("  {} {text}", style("✓").green());
-}
-
-/// Print an error line with red marker.
-pub fn print_error(text: &str) {
-    println!("  {} {text}", style("✗").red());
+    if items.len() <= max_show {
+        return items.join(", ");
+    }
+    let shown = &items[..max_show];
+    let remaining = items.len() - max_show;
+    format!("{} +{remaining} more", shown.join(", "))
 }
 
 /// Clear `height` previously rendered lines, leaving the cursor at the top.

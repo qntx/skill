@@ -1,14 +1,18 @@
 //! `skills experimental_sync` command implementation.
 //!
 //! Syncs skills from `node_modules` into agent directories.
+//! Uses plain console output to match TS style.
 
 use clap::Args;
-use console::style;
 use miette::{IntoDiagnostic, Result};
 
 use skill::SkillManager;
 use skill::skills::discover_skills;
 use skill::types::{AgentId, DiscoverOptions, InstallMode, InstallOptions, InstallScope, Skill};
+
+const DIM: &str = "\x1b[38;5;102m";
+const TEXT: &str = "\x1b[38;5;145m";
+const RESET: &str = "\x1b[0m";
 
 /// Arguments for the `experimental_sync` command.
 #[derive(Args)]
@@ -62,40 +66,31 @@ async fn scan_node_modules(
 
 /// Run the `experimental_sync` command.
 pub async fn run(args: SyncArgs) -> Result<()> {
-    cliclack::intro(style(" skills sync ").on_cyan().black()).into_diagnostic()?;
-
     let cwd = std::env::current_dir().into_diagnostic()?;
     let node_modules = cwd.join("node_modules");
 
     if !node_modules.exists() {
-        cliclack::outro("No node_modules directory found.").into_diagnostic()?;
+        println!("{DIM}No node_modules directory found.{RESET}");
         return Ok(());
     }
 
     let manager = SkillManager::builder().build();
 
-    let spinner = cliclack::spinner();
-    spinner.start("Scanning node_modules for skills...");
+    println!("{TEXT}Scanning node_modules for skills...{RESET}");
     let discover_opts = DiscoverOptions::default();
     let all_skills = scan_node_modules(&node_modules, &discover_opts).await;
 
     if all_skills.is_empty() {
-        spinner.stop("No skills found in node_modules.");
-        cliclack::outro("Done").into_diagnostic()?;
+        println!("{DIM}No skills found in node_modules.{RESET}");
         return Ok(());
     }
 
-    spinner.stop(format!("Found {} skill(s)", all_skills.len()));
-
-    cliclack::note("Skills found", {
-        use std::fmt::Write;
-        let mut body = String::new();
-        for s in &all_skills {
-            let _ = writeln!(body, "{} - {}", s.name, s.description);
-        }
-        body
-    })
-    .into_diagnostic()?;
+    println!("{TEXT}Found {} skill(s):{RESET}", all_skills.len());
+    println!();
+    for s in &all_skills {
+        println!("  {TEXT}{}{RESET} {DIM}- {}{RESET}", s.name, s.description);
+    }
+    println!();
 
     if !args.yes {
         let confirmed: bool = cliclack::confirm("Install these skills?")
@@ -104,8 +99,8 @@ pub async fn run(args: SyncArgs) -> Result<()> {
             .into_diagnostic()?;
 
         if !confirmed {
-            cliclack::outro(style("Sync cancelled").dim()).into_diagnostic()?;
-            return Ok(());
+            println!("{DIM}Sync cancelled{RESET}");
+            std::process::exit(0);
         }
     }
 
@@ -130,8 +125,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         }
     };
 
-    let spinner = cliclack::spinner();
-    spinner.start("Syncing skills...");
+    println!("{TEXT}Syncing skills...{RESET}");
 
     let opts = InstallOptions {
         scope: InstallScope::Project,
@@ -145,7 +139,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         }
     }
 
-    spinner.stop(format!("Synced {} skill(s)", all_skills.len()));
-    cliclack::outro(style("Done!").green()).into_diagnostic()?;
+    println!("{TEXT}✓ Synced {} skill(s){RESET}", all_skills.len());
+    println!();
     Ok(())
 }

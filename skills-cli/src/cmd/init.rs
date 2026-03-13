@@ -1,8 +1,14 @@
 //! `skills init [name]` command implementation.
+//!
+//! Matches the TS `cli.ts` `runInit` UX: plain console output with ANSI
+//! colors, no cliclack framing.
 
 use clap::Args;
-use console::style;
 use miette::{IntoDiagnostic, Result};
+
+const DIM: &str = "\x1b[38;5;102m";
+const TEXT: &str = "\x1b[38;5;145m";
+const RESET: &str = "\x1b[0m";
 
 /// Arguments for the `init` command.
 #[derive(Args)]
@@ -13,8 +19,6 @@ pub struct InitArgs {
 
 /// Run the init command.
 pub fn run(args: &InitArgs) -> Result<()> {
-    cliclack::intro(style(" skills init ").on_cyan().black()).into_diagnostic()?;
-
     let cwd = std::env::current_dir().into_diagnostic()?;
     let cwd_name = cwd
         .file_name()
@@ -25,7 +29,11 @@ pub fn run(args: &InitArgs) -> Result<()> {
     let skill_name = args.name.as_deref().unwrap_or(&cwd_name);
     let has_name = args.name.is_some();
 
-    let skill_dir = if has_name { cwd.join(skill_name) } else { cwd };
+    let skill_dir = if has_name {
+        cwd.join(skill_name)
+    } else {
+        cwd.clone()
+    };
 
     let skill_file = skill_dir.join("SKILL.md");
     let display_path = if has_name {
@@ -35,11 +43,7 @@ pub fn run(args: &InitArgs) -> Result<()> {
     };
 
     if skill_file.exists() {
-        cliclack::outro(format!(
-            "Skill already exists at {}",
-            style(&display_path).dim()
-        ))
-        .into_diagnostic()?;
+        println!("{TEXT}Skill already exists at {DIM}{display_path}{RESET}");
         return Ok(());
     }
 
@@ -71,23 +75,18 @@ Describe when this skill should be used.
 
     std::fs::write(&skill_file, content).into_diagnostic()?;
 
-    cliclack::log::success(format!("Created {display_path}")).into_diagnostic()?;
-
-    cliclack::note(
-        "Next steps",
-        format!(
-            "1. Edit {display_path} to define your skill instructions\n\
-             2. Update the name and description in the frontmatter\n\
-             3. Push to a repo, then run: skills add <owner>/<repo>"
-        ),
-    )
-    .into_diagnostic()?;
-
-    cliclack::outro(format!(
-        "Browse existing skills for inspiration at {}",
-        style("https://skills.sh/").cyan()
-    ))
-    .into_diagnostic()?;
+    println!("{TEXT}Initialized skill: {DIM}{skill_name}{RESET}");
+    if has_name {
+        println!("{TEXT}Created: {DIM}{display_path}{RESET}");
+    }
+    println!();
+    println!("{DIM}Next steps:{RESET}");
+    println!("{DIM}  1. Edit {display_path} to define your skill instructions{RESET}");
+    println!("{DIM}  2. Update the name and description in the frontmatter{RESET}");
+    println!("{DIM}  3. Push to a repo, then run: skills add <owner>/<repo>{RESET}");
+    println!();
+    println!("Discover more skills at {TEXT}https://skills.sh/{RESET}");
+    println!();
 
     Ok(())
 }

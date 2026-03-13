@@ -1,25 +1,24 @@
 //! `skills experimental_install` command implementation.
 //!
 //! Restores skills from a project `skills-lock.json`.
+//! Uses plain console output to match TS style.
 
-use console::style;
 use miette::{IntoDiagnostic, Result};
 
-use crate::ui;
+const DIM: &str = "\x1b[38;5;102m";
+const TEXT: &str = "\x1b[38;5;145m";
+const RESET: &str = "\x1b[0m";
 
 /// Run the `experimental_install` command.
 pub async fn run() -> Result<()> {
-    cliclack::intro(style(" skills install ").on_cyan().black()).into_diagnostic()?;
-
     let cwd = std::env::current_dir().into_diagnostic()?;
     let lock_path = cwd.join("skills-lock.json");
 
     if !lock_path.exists() {
-        cliclack::outro(format!(
-            "No skills-lock.json found. Install skills with {} to create one.",
-            style("skills add <package>").cyan()
-        ))
-        .into_diagnostic()?;
+        println!("{DIM}No skills-lock.json found.{RESET}");
+        println!(
+            "{DIM}Install skills with{RESET} {TEXT}skills add <package>{RESET} {DIM}to create one.{RESET}"
+        );
         return Ok(());
     }
 
@@ -28,22 +27,21 @@ pub async fn run() -> Result<()> {
         .map_err(|e| miette::miette!("{e}"))?;
 
     if lock.skills.is_empty() {
-        cliclack::outro("No skills in lock file.").into_diagnostic()?;
+        println!("{DIM}No skills in lock file.{RESET}");
         return Ok(());
     }
 
-    cliclack::log::info(format!(
-        "Restoring {} skill(s) from skills-lock.json",
+    println!(
+        "{TEXT}Restoring {} skill(s) from skills-lock.json{RESET}",
         lock.skills.len()
-    ))
-    .into_diagnostic()?;
+    );
+    println!();
 
     let mut success = 0u32;
     let mut failed = 0u32;
 
     for (name, entry) in &lock.skills {
-        let spinner = cliclack::spinner();
-        spinner.start(format!("Installing {name} from {}...", entry.source));
+        println!("{DIM}Installing {name} from {}...{RESET}", entry.source);
 
         let output = tokio::process::Command::new("skills")
             .args(["add", &entry.source, "-y", "--skill", name])
@@ -53,22 +51,23 @@ pub async fn run() -> Result<()> {
         match output {
             Ok(o) if o.status.success() => {
                 success += 1;
-                spinner.stop(format!("{} {name}", style("✓").green()));
+                println!("  {TEXT}✓{RESET} {name}");
             }
             _ => {
                 failed += 1;
-                spinner.stop(format!("{} {name}", style("✗").red()));
+                println!("  {DIM}✗ {name}{RESET}");
             }
         }
     }
 
+    println!();
     if success > 0 {
-        ui::print_success(&format!("Restored {success} skill(s)"));
+        println!("{TEXT}✓ Restored {success} skill(s){RESET}");
     }
     if failed > 0 {
-        ui::print_error(&format!("Failed to restore {failed} skill(s)"));
+        println!("{DIM}✗ Failed to restore {failed} skill(s){RESET}");
     }
+    println!();
 
-    cliclack::outro("Done").into_diagnostic()?;
     Ok(())
 }

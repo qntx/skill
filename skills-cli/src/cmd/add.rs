@@ -5,7 +5,6 @@
 //! lock-file integration.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -18,6 +17,10 @@ use skill::types::{
 };
 
 use crate::ui;
+
+const DIM: &str = "\x1b[38;5;102m";
+const TEXT: &str = "\x1b[38;5;145m";
+const RESET: &str = "\x1b[0m";
 
 /// Arguments for the `add` command.
 #[derive(Args)]
@@ -226,7 +229,7 @@ async fn select_agents(
             Ok(values.into_iter().map(AgentId::new).collect())
         }
         ui::SearchMultiselectResult::Cancelled => {
-            cliclack::outro("Installation cancelled").into_diagnostic()?;
+            println!("{DIM}Installation cancelled{RESET}");
             std::process::exit(0);
         }
     }
@@ -248,8 +251,7 @@ async fn do_install(
     target_agents: &[AgentId],
     install_opts: &InstallOptions,
 ) -> (u32, u32) {
-    let spinner = cliclack::spinner();
-    spinner.start("Installing skills...");
+    println!("{TEXT}Installing skills...{RESET}");
     let mut successes = 0u32;
     let mut failures = 0u32;
 
@@ -282,7 +284,6 @@ async fn do_install(
         }
     }
 
-    spinner.stop("Installation complete");
     (successes, failures)
 }
 
@@ -298,14 +299,10 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         args.yes = true;
     }
 
-    cliclack::intro(style(" skills add ").on_cyan().black()).into_diagnostic()?;
-
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
 
     // Parse source
-    let spinner = cliclack::spinner();
-    spinner.start("Parsing source...");
     let parsed = manager.parse_source(source);
     let source_display = if parsed.source_type == SourceType::Local {
         parsed
@@ -315,7 +312,7 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
     } else {
         parsed.url.clone()
     };
-    spinner.stop(format!("Source: {source_display}"));
+    println!("{TEXT}Source: {source_display}{RESET}");
 
     // Merge @skill filter
     if let Some(filter) = &parsed.skill_filter {
@@ -327,8 +324,6 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         resolve_source(&parsed).await?;
 
     // Discover skills
-    let spinner = cliclack::spinner();
-    spinner.start("Discovering skills...");
     let include_internal = args.skill.as_ref().is_some_and(|s| !s.is_empty());
     let discover_opts = DiscoverOptions {
         include_internal,
@@ -340,32 +335,27 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
             .map_err(|e| miette!("{e}"))?;
 
     if skills.is_empty() {
-        spinner.stop(format!("{}", style("No skills found").red()));
-        cliclack::outro(
-            style("No valid skills found. Skills require a SKILL.md with name and description.")
-                .red(),
-        )
-        .into_diagnostic()?;
+        println!(
+            "{DIM}No valid skills found. Skills require a SKILL.md with name and description.{RESET}"
+        );
         return Ok(());
     }
-    spinner.stop(format!(
-        "Found {} skill{}",
+    println!(
+        "{TEXT}Found {} skill{}{RESET}",
         skills.len(),
         if skills.len() > 1 { "s" } else { "" }
-    ));
+    );
 
     // List mode
     if args.list {
-        cliclack::note("Available Skills", {
-            let mut body = String::new();
-            for s in &skills {
-                let _ = writeln!(body, "  {} - {}", s.name, s.description);
-            }
-            body.push_str("\nUse --skill <name> to install specific skills");
-            body
-        })
-        .into_diagnostic()?;
-        cliclack::outro("Done").into_diagnostic()?;
+        println!();
+        println!("{TEXT}Available Skills:{RESET}");
+        for s in &skills {
+            println!("  {TEXT}{}{RESET} {DIM}- {}{RESET}", s.name, s.description);
+        }
+        println!();
+        println!("{DIM}Use --skill <name> to install specific skills{RESET}");
+        println!();
         return Ok(());
     }
 
@@ -434,7 +424,7 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
             .interact()
             .into_diagnostic()?;
         if !confirmed {
-            cliclack::outro(style("Installation cancelled").dim()).into_diagnostic()?;
+            println!("{DIM}Installation cancelled{RESET}");
             return Ok(());
         }
     }
@@ -476,25 +466,22 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
         }
     }
 
+    println!();
     if successes > 0 {
-        ui::print_success(&format!(
-            "Installed {} skill{}",
+        println!(
+            "{TEXT}✓ Installed {} skill{}{RESET}",
             selected_skills.len(),
             if selected_skills.len() == 1 { "" } else { "s" }
-        ));
+        );
     }
     if failures > 0 {
-        ui::print_error(&format!("Failed to install {failures} target(s)"));
+        println!("{DIM}✗ Failed to install {failures} target(s){RESET}");
     }
 
     send_telemetry(&parsed, &selected_skills, &target_agents, scope);
 
-    cliclack::outro(format!(
-        "{}  {}",
-        style("Done!").green(),
-        style("Review skills before use; they run with full agent permissions.").dim()
-    ))
-    .into_diagnostic()?;
+    println!("{DIM}Review skills before use; they run with full agent permissions.{RESET}");
+    println!();
 
     Ok(())
 }
@@ -516,13 +503,11 @@ async fn resolve_source(
         return Ok((local_path.clone(), None));
     }
 
-    let spinner = cliclack::spinner();
-    spinner.start("Cloning repository...");
+    println!("{TEXT}Cloning repository...{RESET}");
     let td = skill::git::clone_repo(&parsed.url, parsed.git_ref.as_deref())
         .await
         .map_err(|e| miette!("{e}"))?;
     let path = td.path().to_path_buf();
-    spinner.stop("Repository cloned");
     Ok((path, Some(td)))
 }
 
@@ -538,23 +523,23 @@ fn show_install_summary(
         .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
         .collect();
 
-    let mut body = String::new();
+    println!();
+    println!("{TEXT}Installation Summary:{RESET}");
     for s in selected_skills {
         let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
-        let _ = writeln!(body, "  {}", ui::shorten_path(&canonical));
+        println!("  {}", ui::shorten_path(&canonical));
     }
-    let _ = write!(body, "\n  agents: {}", ui::format_list(&agent_names));
-    let _ = write!(
-        body,
-        "\n  scope:  {}",
+    println!();
+    println!("  {DIM}agents:{RESET} {}", ui::format_list(&agent_names));
+    println!(
+        "  {DIM}scope:{RESET}  {}",
         if scope == InstallScope::Global {
             "global"
         } else {
             "project"
         }
     );
-
-    let _ = cliclack::note("Installation Summary", body);
+    println!();
 }
 
 fn send_telemetry(

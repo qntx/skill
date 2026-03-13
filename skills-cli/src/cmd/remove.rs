@@ -1,4 +1,8 @@
 //! `skills remove` command implementation.
+//!
+//! Matches the TS `remove.ts` UX: uses cliclack prompts for interactive
+//! selection and confirmation, but plain output for results. Shows
+//! per-skill error details on failure.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -10,6 +14,10 @@ use miette::{IntoDiagnostic, Result, miette};
 use skill::SkillManager;
 use skill::installer::canonical_skills_dir;
 use skill::types::{AgentId, InstallScope, RemoveOptions};
+
+const DIM: &str = "\x1b[38;5;102m";
+const TEXT: &str = "\x1b[38;5;145m";
+const RESET: &str = "\x1b[0m";
 
 /// Arguments for the `remove` command.
 #[derive(Args)]
@@ -77,10 +85,33 @@ async fn scan_installed_skills(
     installed
 }
 
+/// Validate agent names against registry before proceeding.
+fn validate_agents(manager: &SkillManager, agent_names: &[String]) -> Result<Vec<AgentId>> {
+    let all_ids = manager.agents().all_ids();
+    let mut result = Vec::new();
+    for name in agent_names {
+        if name == "*" {
+            return Ok(all_ids);
+        }
+        let id = AgentId::new(name);
+        if all_ids.contains(&id) {
+            result.push(id);
+        } else {
+            return Err(miette!(
+                "Unknown agent: \"{name}\". Available agents: {}",
+                all_ids
+                    .iter()
+                    .map(|a| a.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    Ok(result)
+}
+
 /// Run the remove command.
 pub async fn run(args: RemoveArgs) -> Result<()> {
-    cliclack::intro(style(" skills remove ").on_cyan().black()).into_diagnostic()?;
-
     let manager = SkillManager::builder().build();
     let scope = if args.global {
         InstallScope::Global
@@ -88,15 +119,20 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         InstallScope::Project
     };
     let cwd = std::env::current_dir().into_diagnostic()?;
+
+    // Validate agent names early
+    let target_agents: Vec<AgentId> = if let Some(ref agent_names) = args.agent {
+        validate_agents(&manager, agent_names)?
+    } else {
+        manager.agents().all_ids()
+    };
+
     let installed = scan_installed_skills(&manager, scope, args.global, &cwd).await;
 
     if installed.is_empty() {
-        cliclack::outro("No skills found to remove.").into_diagnostic()?;
+        println!("{DIM}No skills found to remove.{RESET}");
         return Ok(());
     }
-
-    cliclack::log::info(format!("Found {} installed skill(s)", installed.len()))
-        .into_diagnostic()?;
 
     let selected: Vec<String> = if args.all {
         installed.clone()
@@ -113,16 +149,26 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
             prompt = prompt.item(s.clone(), s, "");
         }
         prompt = prompt.required(true);
-        prompt.interact().into_diagnostic()?
+        match prompt.interact() {
+            Ok(sel) => sel,
+            Err(_) => {
+                println!("{DIM}Removal cancelled{RESET}");
+                std::process::exit(0);
+            }
+        }
     };
 
     if selected.is_empty() {
-        cliclack::outro(style("No matching skills found").dim()).into_diagnostic()?;
+        println!("{DIM}No matching skills found.{RESET}");
         return Ok(());
     }
 
     if !args.yes && !args.all {
-        cliclack::note("Skills to remove", selected.join("\n")).into_diagnostic()?;
+        println!("{TEXT}Skills to remove:{RESET}");
+        for s in &selected {
+            println!("  {} {s}", style("•").red());
+        }
+        println!();
 
         let confirmed: bool = cliclack::confirm(format!(
             "Are you sure you want to uninstall {} skill(s)?",
@@ -133,24 +179,12 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         .into_diagnostic()?;
 
         if !confirmed {
-            cliclack::outro(style("Removal cancelled").dim()).into_diagnostic()?;
-            return Ok(());
+            println!("{DIM}Removal cancelled{RESET}");
+            std::process::exit(0);
         }
     }
 
-    let target_agents: Vec<AgentId> = args.agent.as_ref().map_or_else(
-        || manager.agents().all_ids(),
-        |agent_names| {
-            if agent_names.contains(&"*".to_owned()) {
-                manager.agents().all_ids()
-            } else {
-                agent_names.iter().map(AgentId::new).collect()
-            }
-        },
-    );
-
-    let spinner = cliclack::spinner();
-    spinner.start("Removing skills...");
+    println!("{TEXT}Removing skills...{RESET}");
 
     let results = manager
         .remove_skills(
@@ -166,14 +200,20 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
 
     let success_count = results.iter().filter(|r| r.success).count();
     let fail_count = results.iter().filter(|r| !r.success).count();
-    spinner.stop("Removal complete");
 
+    println!();
     if success_count > 0 {
-        cliclack::log::success(format!("Removed {success_count} skill(s)")).into_diagnostic()?;
+        println!("{TEXT}✓ Removed {success_count} skill(s){RESET}");
     }
     if fail_count > 0 {
-        cliclack::log::error(format!("Failed to remove {fail_count} skill(s)"))
-            .into_diagnostic()?;
+        println!("{DIM}✗ Failed to remove {fail_count} skill(s){RESET}");
+        for r in &results {
+            if !r.success {
+                if let Some(ref err) = r.error {
+                    println!("  {DIM}{}: {err}{RESET}", r.skill);
+                }
+            }
+        }
     }
 
     if args.global {
@@ -182,6 +222,6 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         }
     }
 
-    cliclack::outro(style("Done!").green()).into_diagnostic()?;
+    println!();
     Ok(())
 }
