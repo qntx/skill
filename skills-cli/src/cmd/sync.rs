@@ -29,6 +29,10 @@ pub struct SyncArgs {
     /// Skip confirmation prompts.
     #[arg(short, long)]
     pub yes: bool,
+
+    /// Force reinstall all skills (skip up-to-date check).
+    #[arg(short, long)]
+    pub force: bool,
 }
 
 async fn scan_node_modules(
@@ -122,8 +126,12 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Check local lock for up-to-date skills (matches TS sync.ts).
-    let (skills_to_sync, up_to_date) = filter_outdated(all_skills, &cwd).await;
+    // When --force is set, skip the outdated check and sync everything (matches TS sync.ts).
+    let (skills_to_sync, up_to_date) = if args.force {
+        (all_skills, 0)
+    } else {
+        filter_outdated(all_skills, &cwd).await
+    };
 
     if up_to_date > 0 {
         println!("{DIM}{up_to_date} skill(s) already up to date{RESET}");

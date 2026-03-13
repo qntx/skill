@@ -94,7 +94,7 @@ fn select_skills(
         return Ok(skills.to_vec());
     }
 
-    let mut prompt = cliclack::multiselect("Select skills to install");
+    let mut prompt = cliclack::multiselect("Select skills to install (space to toggle)");
     for s in skills {
         prompt = prompt.item(s.name.clone(), &s.name, &s.description);
     }
@@ -371,56 +371,113 @@ async fn install_wellknown_skills(
 
 // ── Output formatting ───────────────────────────────────────────────
 
-fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path) {
-    let total_ok: usize = outcomes
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const BOLD: &str = "\x1b[1m";
+
+fn print_install_results(
+    outcomes: &[SkillInstallOutcome],
+    cwd: &Path,
+    target_agents: &[AgentId],
+    manager: &SkillManager,
+) {
+    let successful: Vec<&SkillInstallOutcome> = outcomes
         .iter()
-        .map(|o| o.universal_agents.len() + o.symlinked_agents.len() + o.copied_agents.len())
-        .sum();
-    let total_fail: usize = outcomes.iter().map(|o| o.failed_agents.len()).sum();
+        .filter(|o| {
+            !o.universal_agents.is_empty()
+                || !o.symlinked_agents.is_empty()
+                || !o.copied_agents.is_empty()
+        })
+        .collect();
+    let failed_outcomes: Vec<&SkillInstallOutcome> = outcomes
+        .iter()
+        .filter(|o| !o.failed_agents.is_empty())
+        .collect();
 
-    println!();
-    for outcome in outcomes {
-        if let Some(ref canonical) = outcome.canonical_path {
-            let short = ui::shorten_path_with_cwd(canonical, cwd);
-            println!("{TEXT}📁 {short}{RESET}");
+    if !successful.is_empty() {
+        let mut result_lines: Vec<String> = Vec::new();
+
+        for outcome in &successful {
+            if let Some(ref canonical) = outcome.canonical_path {
+                let short = ui::shorten_path_with_cwd(canonical, cwd);
+                result_lines.push(format!("{GREEN}✓{RESET} {short}"));
+            } else {
+                result_lines.push(format!("{GREEN}✓{RESET} {}", outcome.skill_name));
+            }
+
+            if !outcome.universal_agents.is_empty() {
+                result_lines.push(format!(
+                    "  {GREEN}universal:{RESET} {}",
+                    ui::format_list(&outcome.universal_agents)
+                ));
+            }
+            if !outcome.symlinked_agents.is_empty() {
+                result_lines.push(format!(
+                    "  {DIM}symlinked:{RESET} {}",
+                    ui::format_list(&outcome.symlinked_agents)
+                ));
+            }
+            if !outcome.copied_agents.is_empty() {
+                result_lines.push(format!(
+                    "  {YELLOW}copied:{RESET} {}",
+                    ui::format_list(&outcome.copied_agents)
+                ));
+            }
         }
 
-        if !outcome.universal_agents.is_empty() {
-            println!(
-                "   {DIM}Universal — {}{RESET}",
-                ui::format_list(&outcome.universal_agents)
-            );
-        }
-        if !outcome.symlinked_agents.is_empty() {
-            println!(
-                "   {DIM}Symlinked — {}{RESET}",
-                ui::format_list(&outcome.symlinked_agents)
-            );
-        }
-        if !outcome.copied_agents.is_empty() {
-            println!(
-                "   {DIM}Copied    — {}{RESET}",
-                ui::format_list(&outcome.copied_agents)
-            );
-        }
-        if !outcome.failed_agents.is_empty() {
-            println!(
-                "   {DIM}Failed    — {}{RESET}",
-                ui::format_list(&outcome.failed_agents)
-            );
-        }
-    }
-
-    println!();
-    if total_ok > 0 {
-        println!(
-            "{TEXT}✓ Installed {} skill{}{RESET}",
-            outcomes.len(),
-            if outcomes.len() == 1 { "" } else { "s" }
+        let skill_count = successful.len();
+        let title = format!(
+            "{GREEN}Installed {} skill{}{RESET}",
+            skill_count,
+            if skill_count == 1 { "" } else { "s" }
         );
+
+        // Print clack-style note box (matches TS p.note).
+        println!();
+        println!("{DIM}╭ {title} {DIM}─{RESET}");
+        for line in &result_lines {
+            println!("{DIM}│{RESET}  {line}");
+        }
+        println!("{DIM}╰─{RESET}");
+
+        // Symlink failure warning (matches TS).
+        let all_copied: Vec<&str> = outcomes
+            .iter()
+            .flat_map(|o| o.copied_agents.iter())
+            .map(String::as_str)
+            .collect();
+        if !all_copied.is_empty()
+            && target_agents
+                .iter()
+                .any(|a| !manager.agents().is_universal(a))
+        {
+            println!(
+                "{YELLOW}⚠{RESET} {YELLOW}Symlinks failed for: {}{RESET}",
+                ui::format_list(
+                    &all_copied
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                )
+            );
+            println!(
+                "{DIM}  Files were copied instead. On Windows, enable Developer Mode for symlink support.{RESET}"
+            );
+        }
     }
-    if total_fail > 0 {
-        println!("{DIM}✗ Failed {total_fail} target(s){RESET}");
+
+    if !failed_outcomes.is_empty() {
+        let total_fail: usize = failed_outcomes.iter().map(|o| o.failed_agents.len()).sum();
+        println!();
+        println!("\x1b[31m✗ Failed to install {total_fail}{RESET}");
+        for outcome in &failed_outcomes {
+            for agent in &outcome.failed_agents {
+                println!(
+                    "  \x1b[31m✗{RESET} {} → {agent}: {DIM}installation error{RESET}",
+                    outcome.skill_name
+                );
+            }
+        }
     }
 }
 
@@ -556,7 +613,7 @@ async fn prompt_security_advisory(parsed: &skill::types::ParsedSource, yes: bool
     Ok(())
 }
 
-async fn prompt_for_find_skills() {
+async fn prompt_for_find_skills(manager: &SkillManager) {
     if skill::lock::is_prompt_dismissed("findSkillsPrompt")
         .await
         .unwrap_or(true)
@@ -564,7 +621,22 @@ async fn prompt_for_find_skills() {
         return;
     }
 
+    // Check if find-skills is already installed (auto-dismiss prompt if so).
+    // Matches TS: checks universal agents for existing find-skills installation.
+    let list_opts = skill::types::ListOptions {
+        scope: Some(InstallScope::Global),
+        agent_filter: manager.agents().universal_agents(),
+        cwd: None,
+    };
+    let installed = manager.list_installed(&list_opts).await.unwrap_or_default();
+    let already_installed = installed.iter().any(|s| s.name == "find-skills");
+    if already_installed {
+        let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
+        return;
+    }
+
     println!();
+    println!("{DIM}One-time prompt:{RESET}");
     let Ok(yes) =
         cliclack::confirm("Want to install find-skills? It helps agents discover new skills.")
             .initial_value(true)
@@ -575,10 +647,18 @@ async fn prompt_for_find_skills() {
 
     if yes {
         println!("{TEXT}Installing find-skills...{RESET}");
+        // Filter out replit agent (matches TS behavior).
+        let agents: Vec<String> = manager
+            .agents()
+            .universal_agents()
+            .iter()
+            .filter(|id| id.as_str() != "replit")
+            .map(|id| id.as_str().to_owned())
+            .collect();
         let add_args = AddArgs {
             source: vec!["vercel-labs/skills@find-skills".to_owned()],
             global: true,
-            agent: None,
+            agent: Some(agents),
             skill: Some(vec!["find-skills".to_owned()]),
             list: false,
             yes: true,
@@ -656,7 +736,7 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
 
     // Prompt for find-skills on first install (matches TS).
     if !args.yes {
-        prompt_for_find_skills().await;
+        prompt_for_find_skills(&manager).await;
     }
 
     Ok(())
@@ -755,14 +835,22 @@ async fn run_single_source(
     };
 
     let outcomes = do_install(manager, &selected_skills, &target_agents, &install_opts).await;
-    print_install_results(&outcomes, cwd);
+    print_install_results(&outcomes, cwd, &target_agents, manager);
 
     // Lock file integration.
     update_lock_file(&parsed, &selected_skills).await;
 
+    // Update local lock for project-scoped installs (matches TS addSkillToLocalLock).
+    if scope == InstallScope::Project {
+        update_local_lock_file(&parsed, &selected_skills, cwd).await;
+    }
+
     send_telemetry(&parsed, &selected_skills, &target_agents, scope);
 
-    println!("{DIM}Review skills before use; they run with full agent permissions.{RESET}");
+    println!();
+    println!(
+        "{GREEN}{BOLD}Done!{RESET} {DIM}Review skills before use; they run with full agent permissions.{RESET}"
+    );
     println!();
 
     Ok(())
@@ -820,7 +908,7 @@ async fn handle_wellknown_source(
 
     let outcomes =
         install_wellknown_skills(&wk_skills, &target_agents, manager, &install_opts).await;
-    print_install_results(&outcomes, cwd);
+    print_install_results(&outcomes, cwd, &target_agents, manager);
 
     // Lock file: well-known skills use source_identifier as source.
     for wk in &wk_skills {
@@ -838,10 +926,38 @@ async fn handle_wellknown_source(
 
     send_wellknown_telemetry(&wk_skills, &target_agents, scope);
 
-    println!("{DIM}Review skills before use; they run with full agent permissions.{RESET}");
+    println!();
+    println!(
+        "{GREEN}{BOLD}Done!{RESET} {DIM}Review skills before use; they run with full agent permissions.{RESET}"
+    );
     println!();
 
     Ok(())
+}
+
+/// Update the project-scoped `skills-lock.json` after a successful install.
+///
+/// Matches TS `addSkillToLocalLock()`: computes a local SHA-256 hash of the
+/// skill folder contents and records the source information.
+async fn update_local_lock_file(parsed: &skill::types::ParsedSource, skills: &[Skill], cwd: &Path) {
+    let source = skill::source::get_owner_repo(parsed).unwrap_or_else(|| parsed.url.clone());
+
+    for s in skills {
+        let hash = skill::local_lock::compute_skill_folder_hash(&s.path)
+            .await
+            .unwrap_or_default();
+
+        let _ = skill::local_lock::add_skill_to_local_lock(
+            &s.name,
+            skill::local_lock::LocalSkillLockEntry {
+                source: source.clone(),
+                source_type: parsed.source_type.to_string(),
+                computed_hash: hash,
+            },
+            cwd,
+        )
+        .await;
+    }
 }
 
 /// Update the global lock file after a successful git-based install.

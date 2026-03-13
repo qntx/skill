@@ -32,8 +32,12 @@ pub struct RemoveArgs {
     #[arg(short, long, num_args = 1..)]
     pub agent: Option<Vec<String>>,
 
+    /// Remove specific skills by name (use '*' for all).
+    #[arg(short, long, num_args = 1..)]
+    pub skill: Option<Vec<String>>,
+
     /// Skip confirmation prompts.
-    #[arg(short, long)]
+    #[arg(short = 'y', long)]
     pub yes: bool,
 
     /// Shorthand for --skill '*' --agent '*' -y.
@@ -110,7 +114,8 @@ fn validate_agents(manager: &SkillManager, agent_names: &[String]) -> Result<Vec
 }
 
 /// Run the remove command.
-pub async fn run(args: RemoveArgs) -> Result<()> {
+#[allow(clippy::cognitive_complexity)]
+pub async fn run(mut args: RemoveArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let scope = if args.global {
         InstallScope::Global
@@ -118,6 +123,15 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
         InstallScope::Project
     };
     let cwd = std::env::current_dir().into_diagnostic()?;
+
+    // Merge --skill flag values into positional skills list (matches TS -s flag).
+    if let Some(ref skill_names) = args.skill {
+        for name in skill_names {
+            if !args.skills.contains(name) {
+                args.skills.push(name.clone());
+            }
+        }
+    }
 
     // Validate agent names early
     let target_agents: Vec<AgentId> = if let Some(ref agent_names) = args.agent {
@@ -137,12 +151,17 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
     let selected: Vec<String> = if args.all {
         installed.clone()
     } else if !args.skills.is_empty() {
-        let names_lower: Vec<String> = args.skills.iter().map(|s| s.to_lowercase()).collect();
-        installed
-            .iter()
-            .filter(|s| names_lower.contains(&s.to_lowercase()))
-            .cloned()
-            .collect()
+        // Handle wildcard: '*' selects all (matches TS).
+        if args.skills.contains(&"*".to_owned()) {
+            installed.clone()
+        } else {
+            let names_lower: Vec<String> = args.skills.iter().map(|s| s.to_lowercase()).collect();
+            installed
+                .iter()
+                .filter(|s| names_lower.contains(&s.to_lowercase()))
+                .cloned()
+                .collect()
+        }
     } else {
         let mut prompt = cliclack::multiselect("Select skills to remove");
         for s in &installed {
@@ -230,6 +249,8 @@ pub async fn run(args: RemoveArgs) -> Result<()> {
     // Telemetry (matches TS remove.ts: group by source).
     send_remove_telemetry(&selected, args.global).await;
 
+    println!();
+    println!("\x1b[32m\x1b[1mDone!\x1b[0m");
     println!();
     Ok(())
 }

@@ -20,6 +20,40 @@ struct UpdateEntry {
     skill_path: Option<String>,
 }
 
+struct SkippedSkill {
+    name: String,
+    reason: String,
+    source_url: String,
+}
+
+fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
+    if entry.skill_folder_hash.is_empty() && entry.skill_path.is_none() {
+        "No version tracking".to_owned()
+    } else if entry.skill_folder_hash.is_empty() {
+        "No folder hash".to_owned()
+    } else {
+        "No skill path recorded".to_owned()
+    }
+}
+
+fn print_skipped_skills(skipped: &[SkippedSkill]) {
+    if skipped.is_empty() {
+        return;
+    }
+    println!();
+    println!(
+        "{DIM}{} skill(s) cannot be checked automatically:{RESET}",
+        skipped.len()
+    );
+    for s in skipped {
+        println!("  {TEXT}•{RESET} {} {DIM}({}){RESET}", s.name, s.reason);
+        println!(
+            "    {DIM}To update: {TEXT}skills add {} -g -y{RESET}",
+            s.source_url
+        );
+    }
+}
+
 /// Build the install URL from `source_url` + `skill_path` (matches TS logic).
 fn build_install_url(source_url: &str, skill_path: Option<&str>) -> String {
     let Some(sp) = skill_path else {
@@ -59,11 +93,15 @@ pub async fn run() -> Result<()> {
 
     let token = skill::lock::get_github_token();
     let mut updates: Vec<UpdateEntry> = Vec::new();
-    let mut skipped = 0usize;
+    let mut skipped: Vec<SkippedSkill> = Vec::new();
 
     for (name, entry) in &lock.skills {
         if entry.skill_folder_hash.is_empty() || entry.skill_path.is_none() {
-            skipped += 1;
+            skipped.push(SkippedSkill {
+                name: name.clone(),
+                reason: get_skip_reason(entry),
+                source_url: entry.source_url.clone(),
+            });
             continue;
         }
 
@@ -80,10 +118,11 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    let checked_count = lock.skills.len() - skipped;
+    let checked_count = lock.skills.len() - skipped.len();
 
     if checked_count == 0 {
         println!("{DIM}No skills to check.{RESET}");
+        print_skipped_skills(&skipped);
         return Ok(());
     }
 
@@ -133,6 +172,8 @@ pub async fn run() -> Result<()> {
     if fail_count > 0 {
         println!("{DIM}Failed to update {fail_count} skill(s){RESET}");
     }
+
+    print_skipped_skills(&skipped);
 
     let mut props = HashMap::new();
     props.insert("skillCount".to_owned(), updates.len().to_string());

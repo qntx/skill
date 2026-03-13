@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 use miette::{IntoDiagnostic, Result};
 
+use skill::SkillManager;
+
 use super::add::RunAddOptions;
 
 const DIM: &str = "\x1b[38;5;102m";
@@ -36,6 +38,15 @@ pub async fn run() -> Result<()> {
         println!("{DIM}No skills in lock file.{RESET}");
         return Ok(());
     }
+
+    // Only install to universal agents (matches TS install.ts: getUniversalAgents()).
+    let manager = SkillManager::builder().build();
+    let universal_agent_names: Vec<String> = manager
+        .agents()
+        .universal_agents()
+        .iter()
+        .map(|id| id.as_str().to_owned())
+        .collect();
 
     println!(
         "{TEXT}Restoring {} skill(s) from skills-lock.json{RESET}",
@@ -70,8 +81,7 @@ pub async fn run() -> Result<()> {
             global: false,
             yes: true,
             skill_filter: Some(skill_names.clone()),
-            // Only universal agents (matches TS install.ts behavior).
-            agent: Some(vec!["*".to_owned()]),
+            agent: Some(universal_agent_names.clone()),
         })
         .await;
 
@@ -101,6 +111,7 @@ pub async fn run() -> Result<()> {
         let sync_args = super::sync::SyncArgs {
             agent: None,
             yes: true,
+            force: false,
         };
         if let Err(e) = super::sync::run(sync_args).await {
             tracing::warn!(error = %e, "node_modules sync during install failed");

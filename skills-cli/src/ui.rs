@@ -605,6 +605,15 @@ fn build_fzf_lines(
 /// # Errors
 ///
 /// Returns an error if terminal I/O fails.
+/// Adaptive debounce delay matching TS find.ts behavior.
+const fn debounce_delay(query_len: usize) -> u64 {
+    match query_len {
+        0..=2 => 250,
+        3..=4 => 200,
+        _ => 150,
+    }
+}
+
 pub fn fzf_search<F>(message: &str, search_fn: F) -> io::Result<FzfResult>
 where
     F: Fn(&str) -> Vec<FzfItem>,
@@ -613,8 +622,10 @@ where
     let mut query = String::new();
     let mut cursor: usize = 0;
     let mut results: Vec<FzfItem> = search_fn("");
-    let max_visible: usize = 10;
+    let max_visible: usize = 8;
     let mut height: u16 = 0;
+    let mut pending_search = false;
+    let mut last_input = std::time::Instant::now();
 
     terminal::enable_raw_mode()?;
     render_lines(
@@ -631,7 +642,48 @@ where
     )?;
 
     loop {
-        if !event::poll(std::time::Duration::from_millis(100))? {
+        let poll_timeout = if pending_search {
+            #[allow(clippy::cast_possible_truncation)]
+            let elapsed = last_input.elapsed().as_millis() as u64;
+            let delay = debounce_delay(query.len());
+            if elapsed >= delay {
+                // Debounce period elapsed — show loading indicator then execute search.
+                render_lines(
+                    &mut stdout,
+                    &build_fzf_lines(
+                        PromptState::Active,
+                        message,
+                        &format!("{query} \x1b[2m...\x1b[0m"),
+                        cursor,
+                        &results,
+                        max_visible,
+                    ),
+                    &mut height,
+                )?;
+                results = search_fn(&query);
+                cursor = 0;
+                pending_search = false;
+                render_lines(
+                    &mut stdout,
+                    &build_fzf_lines(
+                        PromptState::Active,
+                        message,
+                        &query,
+                        cursor,
+                        &results,
+                        max_visible,
+                    ),
+                    &mut height,
+                )?;
+                std::time::Duration::from_millis(100)
+            } else {
+                std::time::Duration::from_millis(delay - elapsed)
+            }
+        } else {
+            std::time::Duration::from_millis(100)
+        };
+
+        if !event::poll(poll_timeout)? {
             continue;
         }
         let Event::Key(KeyEvent {
@@ -685,28 +737,30 @@ where
             }
             KeyCode::Backspace => {
                 query.pop();
-                cursor = 0;
-                results = search_fn(&query);
+                pending_search = true;
+                last_input = std::time::Instant::now();
             }
             KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL) => {
                 query.push(c);
-                cursor = 0;
-                results = search_fn(&query);
+                pending_search = true;
+                last_input = std::time::Instant::now();
             }
             _ => {}
         }
 
-        render_lines(
-            &mut stdout,
-            &build_fzf_lines(
-                PromptState::Active,
-                message,
-                &query,
-                cursor,
-                &results,
-                max_visible,
-            ),
-            &mut height,
-        )?;
+        if !pending_search {
+            render_lines(
+                &mut stdout,
+                &build_fzf_lines(
+                    PromptState::Active,
+                    message,
+                    &query,
+                    cursor,
+                    &results,
+                    max_visible,
+                ),
+                &mut height,
+            )?;
+        }
     }
 }
