@@ -8,5 +8,5 @@ mod traits;
 mod wellknown;
 
 pub use registry::ProviderRegistry;
-pub use traits::{HostProvider, ProviderMatch};
+pub use traits::{BoxFuture, HostProvider};
 pub use wellknown::WellKnownProvider;

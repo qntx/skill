@@ -1,6 +1,6 @@
 //! Provider registry.
 
-use super::traits::{HostProvider, ProviderMatch};
+use super::traits::HostProvider;
 use super::wellknown::WellKnownProvider;
 
 /// Registry managing host providers.
@@ -41,16 +41,14 @@ impl ProviderRegistry {
         self.providers.push(Box::new(provider));
     }
 
-    /// Find the first provider that matches the given URL.
+    /// Find the first provider matching `url`.
+    ///
+    /// Returns the provider reference and its source identifier.
     #[must_use]
-    pub fn find_provider(&self, url: &str) -> Option<(&dyn HostProvider, ProviderMatch)> {
-        for provider in &self.providers {
-            let m = provider.matches(url);
-            if m.matches {
-                return Some((provider.as_ref(), m));
-            }
-        }
-        None
+    pub fn find_match(&self, url: &str) -> Option<(&dyn HostProvider, String)> {
+        self.providers
+            .iter()
+            .find_map(|p| p.matches_url(url).map(|source_id| (p.as_ref(), source_id)))
     }
 
     /// Get all registered providers.

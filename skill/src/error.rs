@@ -60,9 +60,9 @@ pub enum Error {
     /// YAML parsing error (frontmatter).
     #[error("YAML error: {source}")]
     Yaml {
-        /// The underlying `serde_yaml` error.
+        /// The underlying `serde_yml` error.
         #[from]
-        source: serde_yaml::Error,
+        source: serde_yml::Error,
     },
 
     /// The agent does not support the requested operation.

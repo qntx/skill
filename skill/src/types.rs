@@ -73,7 +73,7 @@ pub struct Skill {
     pub plugin_name: Option<String>,
     /// Additional metadata from frontmatter.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, serde_yaml::Value>>,
+    pub metadata: Option<HashMap<String, serde_yml::Value>>,
 }
 
 /// A skill fetched from a remote host provider.
@@ -95,7 +95,7 @@ pub struct RemoteSkill {
     pub source_identifier: String,
     /// Additional metadata from frontmatter.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, serde_yaml::Value>>,
+    pub metadata: Option<HashMap<String, serde_yml::Value>>,
 }
 
 /// A well-known skill with multiple files.

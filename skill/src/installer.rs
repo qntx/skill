@@ -3,7 +3,7 @@
 //! Handles copying or symlinking skills into agent-specific directories,
 //! with a canonical `.agents/skills/` location as the single source of truth.
 
-use std::path::{MAIN_SEPARATOR, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use crate::agents::AgentRegistry;
 use crate::error::{Error, Result};
@@ -66,10 +66,7 @@ fn is_path_safe(base_path: &Path, target_path: &Path) -> bool {
     let Ok(nt) = normalize_path(target_path) else {
         return false;
     };
-    let base_str = nb.to_string_lossy();
-    let target_str = nt.to_string_lossy();
-    let sep = MAIN_SEPARATOR.to_string();
-    target_str == base_str || target_str.starts_with(&format!("{base_str}{sep}"))
+    nt.starts_with(&nb)
 }
 
 fn normalize_path(p: &Path) -> std::io::Result<PathBuf> {

@@ -5,7 +5,7 @@
 //! scanning.
 
 use std::collections::HashSet;
-use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use crate::error::{Error, Result};
 use crate::types::{DiscoverOptions, Skill};
@@ -44,17 +44,17 @@ pub async fn parse_skill_md(skill_md_path: &Path, include_internal: bool) -> Res
         return Ok(None);
     };
 
-    let Ok(data) = serde_yaml::from_str::<serde_yaml::Value>(frontmatter) else {
+    let Ok(data) = serde_yml::from_str::<serde_yml::Value>(frontmatter) else {
         return Ok(None);
     };
 
     let name = data
         .get("name")
-        .and_then(serde_yaml::Value::as_str)
+        .and_then(serde_yml::Value::as_str)
         .map(String::from);
     let description = data
         .get("description")
-        .and_then(serde_yaml::Value::as_str)
+        .and_then(serde_yml::Value::as_str)
         .map(String::from);
 
     let (Some(name), Some(description)) = (name, description) else {
@@ -64,7 +64,7 @@ pub async fn parse_skill_md(skill_md_path: &Path, include_internal: bool) -> Res
     let is_internal = data
         .get("metadata")
         .and_then(|m| m.get("internal"))
-        .and_then(serde_yaml::Value::as_bool)
+        .and_then(serde_yml::Value::as_bool)
         .unwrap_or(false);
 
     if is_internal && !should_install_internal_skills() && !include_internal {
@@ -72,8 +72,7 @@ pub async fn parse_skill_md(skill_md_path: &Path, include_internal: bool) -> Res
     }
 
     let metadata = data.get("metadata").and_then(|m| {
-        serde_yaml::from_value::<std::collections::HashMap<String, serde_yaml::Value>>(m.clone())
-            .ok()
+        serde_yml::from_value::<std::collections::HashMap<String, serde_yml::Value>>(m.clone()).ok()
     });
 
     let dir = skill_md_path
@@ -158,12 +157,7 @@ pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
     let target = base_path.join(subpath);
     let normalized_base = normalize_path(base_path);
     let normalized_target = normalize_path(&target);
-
-    let base_str = normalized_base.to_string_lossy();
-    let target_str = normalized_target.to_string_lossy();
-    let sep = MAIN_SEPARATOR.to_string();
-
-    target_str == base_str || target_str.starts_with(&format!("{base_str}{sep}"))
+    normalized_target.starts_with(&normalized_base)
 }
 
 /// Best-effort path normalization: canonical if possible, lexical otherwise.

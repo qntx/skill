@@ -5,7 +5,7 @@
 //! `plugin-manifest.ts` implementation.
 
 use std::collections::HashMap;
-use std::path::{Component, MAIN_SEPARATOR, Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -38,12 +38,7 @@ struct PluginManifest {
 fn is_contained_in(target_path: &Path, base_path: &Path) -> bool {
     let normalized_base = normalize_resolve(base_path);
     let normalized_target = normalize_resolve(target_path);
-
-    let base_str = normalized_base.to_string_lossy();
-    let target_str = normalized_target.to_string_lossy();
-    let sep = MAIN_SEPARATOR.to_string();
-
-    target_str == base_str || target_str.starts_with(&format!("{base_str}{sep}"))
+    normalized_target.starts_with(&normalized_base)
 }
 
 /// Best-effort normalize + resolve.

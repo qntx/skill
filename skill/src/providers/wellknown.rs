@@ -5,16 +5,16 @@
 use crate::error::Result;
 use crate::types::{RemoteSkill, WellKnownIndex, WellKnownSkill, WellKnownSkillEntry};
 
-use super::traits::{HostProvider, ProviderMatch};
+use super::traits::{BoxFuture, HostProvider};
 
 const WELL_KNOWN_PATH: &str = ".well-known/skills";
 const INDEX_FILE: &str = "index.json";
+const EXCLUDED_HOSTS: &[&str] = &["github.com", "gitlab.com", "huggingface.co"];
 
 /// Provider for well-known skills endpoints.
 #[derive(Debug, Clone, Copy)]
 pub struct WellKnownProvider;
 
-#[async_trait::async_trait]
 impl HostProvider for WellKnownProvider {
     fn id(&self) -> &'static str {
         "well-known"
@@ -24,46 +24,25 @@ impl HostProvider for WellKnownProvider {
         "Well-Known Skills"
     }
 
-    fn matches(&self, url: &str) -> ProviderMatch {
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            return ProviderMatch {
-                matches: false,
-                source_identifier: None,
-            };
+    fn matches_url(&self, url: &str) -> Option<String> {
+        let parsed = url::Url::parse(url).ok()?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return None;
         }
-
-        let Ok(parsed) = url::Url::parse(url) else {
-            return ProviderMatch {
-                matches: false,
-                source_identifier: None,
-            };
-        };
-
-        let excluded = ["github.com", "gitlab.com", "huggingface.co"];
-        if let Some(host) = parsed.host_str() {
-            if excluded.contains(&host) {
-                return ProviderMatch {
-                    matches: false,
-                    source_identifier: None,
-                };
-            }
-            ProviderMatch {
-                matches: true,
-                source_identifier: Some(format!("wellknown/{host}")),
-            }
-        } else {
-            ProviderMatch {
-                matches: false,
-                source_identifier: None,
-            }
+        let host = parsed.host_str()?;
+        if EXCLUDED_HOSTS.contains(&host) {
+            return None;
         }
+        Some(format!("wellknown/{host}"))
     }
 
-    async fn fetch_skill(&self, url: &str) -> Result<Option<RemoteSkill>> {
-        let Some(wk) = self.fetch_single_skill(url).await? else {
-            return Ok(None);
-        };
-        Ok(Some(wk.remote))
+    fn fetch_skill<'a>(&'a self, url: &'a str) -> BoxFuture<'a, Result<Option<RemoteSkill>>> {
+        Box::pin(async move {
+            let Some(wk) = self.fetch_single_skill(url).await? else {
+                return Ok(None);
+            };
+            Ok(Some(wk.remote))
+        })
     }
 
     fn to_raw_url(&self, url: &str) -> String {
@@ -179,14 +158,14 @@ impl WellKnownProvider {
         let fm = crate::skills::extract_frontmatter(&content);
         let (name, description) = match fm {
             Some((fm_str, _)) => {
-                let data: serde_yaml::Value = serde_yaml::from_str(fm_str).unwrap_or_default();
+                let data: serde_yml::Value = serde_yml::from_str(fm_str).unwrap_or_default();
                 let n = data
                     .get("name")
-                    .and_then(serde_yaml::Value::as_str)
+                    .and_then(serde_yml::Value::as_str)
                     .map(String::from);
                 let d = data
                     .get("description")
-                    .and_then(serde_yaml::Value::as_str)
+                    .and_then(serde_yml::Value::as_str)
                     .map(String::from);
                 match (n, d) {
                     (Some(n), Some(d)) => (n, d),
@@ -213,9 +192,9 @@ impl WellKnownProvider {
         }
 
         let metadata = fm.and_then(|(fm_str, _)| {
-            let data: serde_yaml::Value = serde_yaml::from_str(fm_str).ok()?;
+            let data: serde_yml::Value = serde_yml::from_str(fm_str).ok()?;
             data.get("metadata").and_then(|m| {
-                serde_yaml::from_value::<std::collections::HashMap<String, serde_yaml::Value>>(
+                serde_yml::from_value::<std::collections::HashMap<String, serde_yml::Value>>(
                     m.clone(),
                 )
                 .ok()

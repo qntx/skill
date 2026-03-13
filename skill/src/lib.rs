@@ -48,4 +48,3 @@ pub mod types;
 
 pub use error::{Error, Result};
 pub use manager::SkillManager;
-pub use types::*;
