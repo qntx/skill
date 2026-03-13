@@ -8,8 +8,8 @@
 
 set -eu
 
-REPO="qntx/kobe"
-BIN="kobe"
+REPO="qntx/skill"
+BIN="skills"
 
 BIN_UPPER=$(echo "$BIN" | tr '[:lower:]' '[:upper:]')
 

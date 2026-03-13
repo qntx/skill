@@ -8,7 +8,7 @@
 $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
 $Repo = "qntx/skill"
-$Bin = "skill"
+$Bin = "skills"
 
 $BinUpper = $Bin.ToUpper()
 $VerEnv = "${BinUpper}_VERSION"
