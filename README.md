@@ -1,13 +1,13 @@
 <div align="center">
 
-# skill
+# Skill
 
 **The open agent skills ecosystem — rewritten in Rust.**
 
 [![Crates.io](https://img.shields.io/crates/v/skill.svg)](https://crates.io/crates/skill)
 [![docs.rs](https://img.shields.io/docsrs/skill)](https://docs.rs/skill)
-[![CI](https://img.shields.io/github/actions/workflow/status/qntx/skill/ci.yml?label=CI)](https://github.com/qntx/skill/actions)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/qntx/skill/rust.yml?label=CI)](https://github.com/qntx/skill/actions)
+[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 A drop-in, feature-equivalent Rust replacement for the
 [Vercel `skills` CLI](https://github.com/vercel-labs/agent-skills).
@@ -44,12 +44,23 @@ while adding the performance and reliability benefits of a native compiled binar
 
 ## Quick Start
 
+### Install the CLI
+
+**Shell** (macOS / Linux):
+
+```sh
+curl -fsSL https://sh.qntx.fun/skill | sh
+```
+
+**PowerShell** (Windows):
+
+```powershell
+irm https://sh.qntx.fun/skill/ps | iex
+```
+
 ### CLI
 
 ```bash
-# Install from crates.io
-cargo install skill-cli
-
 # Add skills from a GitHub repo
 skills add vercel-labs/agent-skills
 
@@ -178,7 +189,7 @@ async fn main() -> skill::Result<()> {
 
 The `add` command accepts many source formats:
 
-```text
+```bash
 # GitHub shorthand
 skills add owner/repo
 skills add owner/repo/path/to/skill
@@ -259,7 +270,7 @@ The CLI binary enables both flags. Library consumers can opt in selectively.
 ## Compatibility
 
 This project is a **drop-in replacement** for the
-[Vercel `skills` CLI](https://github.com/vercel-labs/agent-skills) (`npx @anthropic-ai/skills`).
+[Vercel `skills` CLI](https://github.com/vercel-labs/agent-skills) (`npx skills`).
 
 - Same CLI interface, flags, and aliases
 - Same `SKILL.md` format and YAML frontmatter schema
