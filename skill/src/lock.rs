@@ -108,6 +108,11 @@ pub async fn read_skill_lock() -> Result<SkillLockFile> {
 /// # Errors
 ///
 /// Returns an error on I/O failure.
+///
+/// # Panics
+///
+/// Panics if the lock file path has no parent directory (should never happen
+/// since the path is `~/.agents/.skill-lock.json`).
 pub async fn write_skill_lock(lock: &SkillLockFile) -> Result<()> {
     let path = lock_file_path();
     let parent = path.parent().expect("lock file path has parent");
