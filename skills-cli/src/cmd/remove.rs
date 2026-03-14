@@ -14,7 +14,7 @@ use skill::SkillManager;
 use skill::installer::canonical_skills_dir;
 use skill::types::{AgentId, InstallScope, RemoveOptions};
 
-use crate::ui::{DIM, RESET};
+use crate::ui::{self, DIM, RESET};
 
 /// Arguments for the `remove` command.
 #[derive(Args)]
@@ -174,6 +174,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
             prompt = prompt.item(s.clone(), s, "");
         }
         prompt = prompt.required(true);
+        ui::drain_input_events();
         match prompt.interact() {
             Ok(sel) => sel,
             Err(_) => {
@@ -196,6 +197,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
         }
         println!();
 
+        ui::drain_input_events();
         let confirmed: bool = cliclack::confirm(format!(
             "Are you sure you want to uninstall {} skill(s)?",
             selected.len()

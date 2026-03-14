@@ -112,6 +112,7 @@ pub(super) fn select_skills(
         }
         prompt = prompt.required(true);
 
+        ui::drain_input_events();
         let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
         let selected_names: Vec<String> = selected_names
             .into_iter()
@@ -134,6 +135,7 @@ pub(super) fn select_skills(
         }
         prompt = prompt.required(true);
 
+        ui::drain_input_events();
         let selected_names: Vec<String> = prompt.interact().into_diagnostic()?;
         if selected_names.is_empty() {
             return Err(miette!("No skills selected"));
@@ -358,6 +360,7 @@ pub(super) fn resolve_scope(
         return Ok(InstallScope::Project);
     }
 
+    ui::drain_input_events();
     let scope: bool = cliclack::select("Installation scope")
         .item(
             false,
@@ -388,6 +391,7 @@ pub(super) fn resolve_mode(copy_flag: bool, yes: bool) -> Result<InstallMode> {
         return Ok(InstallMode::Symlink);
     }
 
+    ui::drain_input_events();
     let mode: InstallMode = cliclack::select("Installation method")
         .item(
             InstallMode::Symlink,

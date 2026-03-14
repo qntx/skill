@@ -16,7 +16,7 @@ use miette::{IntoDiagnostic, Result, miette};
 use skill::SkillManager;
 use skill::types::{AgentId, DiscoverOptions, InstallOptions, InstallScope, Skill, SourceType};
 
-use crate::ui::{DIM, GREEN, RESET, TEXT};
+use crate::ui::{self, DIM, GREEN, RESET, TEXT};
 
 /// Arguments for the `add` command.
 #[derive(Args)]
@@ -216,6 +216,7 @@ async fn run_single_source(
     }
 
     if !args.yes {
+        ui::drain_input_events();
         let confirmed: bool = cliclack::confirm("Proceed with installation?")
             .initial_value(true)
             .interact()

@@ -228,6 +228,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     let _ = cliclack::note("Sync Summary", summary_lines.join("\n"));
 
     if !args.yes {
+        ui::drain_input_events();
         let confirmed: bool = cliclack::confirm("Proceed with sync?")
             .initial_value(true)
             .interact()

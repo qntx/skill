@@ -36,6 +36,7 @@ pub async fn run() -> Result<()> {
 
     println!("{TEXT}New version available: {current} \u{2192} {latest}{RESET}");
 
+    crate::ui::drain_input_events();
     let confirmed: bool = cliclack::confirm("Upgrade now?")
         .initial_value(true)
         .interact()

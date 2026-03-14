@@ -7,7 +7,7 @@ use miette::{IntoDiagnostic, Result, miette};
 
 use skill::types::{AgentId, InstallScope, Skill, SourceType, WellKnownSkill};
 
-use crate::ui::{DIM, RESET, TEXT};
+use crate::ui::{self, DIM, RESET, TEXT};
 
 pub(super) fn send_telemetry(
     parsed: &skill::types::ParsedSource,
@@ -122,6 +122,7 @@ pub(super) async fn prompt_security_advisory(
         );
         println!();
 
+        ui::drain_input_events();
         let confirmed: bool = cliclack::confirm("Continue with installation?")
             .initial_value(true)
             .interact()
@@ -165,6 +166,7 @@ pub(super) async fn prompt_for_find_skills(
     let _ = cliclack::log::remark(format!(
         "{DIM}One-time prompt - you won't be asked again if you dismiss.{RESET}"
     ));
+    ui::drain_input_events();
     let Ok(yes) = cliclack::confirm(
         "Install the \x1b[36mfind-skills\x1b[0m skill? It helps your agent discover and suggest skills."
     )

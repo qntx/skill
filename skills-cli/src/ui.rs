@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::io::{self, Write};
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     terminal,
 };
 
@@ -113,6 +113,23 @@ pub fn show_banner(_version: &str) {
     println!();
     println!("Discover more skills at {TEXT}https://skills.sh/{RESET}");
     println!();
+}
+
+/// Drain any stale key events from the terminal input buffer.
+///
+/// On Windows, crossterm generates both `Press` and `Release` events for every
+/// keypress. When a previous prompt (e.g. `cliclack::multiselect`) consumes the
+/// `Press` event, the `Release` event remains buffered. If the next prompt reads
+/// it without filtering, it auto-confirms instantly.
+///
+/// Call this before any `cliclack` `.interact()` call to prevent cascading
+/// auto-confirmation on Windows.
+pub fn drain_input_events() {
+    let _ = terminal::enable_raw_mode();
+    while event::poll(std::time::Duration::from_millis(10)).unwrap_or(false) {
+        let _ = event::read();
+    }
+    let _ = terminal::disable_raw_mode();
 }
 
 /// Shorten a path for display by replacing the home directory with `~`
@@ -488,11 +505,20 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
             continue;
         }
         let Event::Key(KeyEvent {
-            code, modifiers, ..
+            code,
+            modifiers,
+            kind,
+            ..
         }) = event::read()?
         else {
             continue;
         };
+
+        // On Windows, crossterm generates both Press and Release events for
+        // every keypress. Only process Press to avoid duplicate handling.
+        if kind != KeyEventKind::Press {
+            continue;
+        }
 
         let filtered = filtered_indices(&opts.items, &query);
 
@@ -760,11 +786,20 @@ where
             continue;
         }
         let Event::Key(KeyEvent {
-            code, modifiers, ..
+            code,
+            modifiers,
+            kind,
+            ..
         }) = event::read()?
         else {
             continue;
         };
+
+        // On Windows, crossterm generates both Press and Release events for
+        // every keypress. Only process Press to avoid duplicate handling.
+        if kind != KeyEventKind::Press {
+            continue;
+        }
 
         match code {
             KeyCode::Enter => {
