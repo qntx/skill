@@ -64,9 +64,8 @@ enum Commands {
     /// Check installation health (broken symlinks, lock consistency).
     Doctor,
 
-    /// Update the skills CLI binary to the latest release.
-    #[command(name = "self-update")]
-    SelfUpdate,
+    /// Upgrade the skills CLI binary to the latest release.
+    Upgrade,
 }
 
 #[tokio::main]
@@ -119,9 +118,9 @@ async fn main() -> miette::Result<()> {
                 ui::show_logo();
                 cmd::doctor::run().await?;
             }
-            Commands::SelfUpdate => {
+            Commands::Upgrade => {
                 ui::show_logo();
-                cmd::self_update::run().await?;
+                cmd::upgrade::run().await?;
             }
         },
     }

@@ -305,7 +305,11 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
     // Rows
     for skill in skills {
         let display_name = if skill.name.len() > name_width {
-            format!("{}\u{2026}", &skill.name[..name_width - 1])
+            let mut end = name_width - 1;
+            while !skill.name.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}\u{2026}", &skill.name[..end])
         } else {
             skill.name.clone()
         };

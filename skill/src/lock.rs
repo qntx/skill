@@ -110,15 +110,22 @@ pub async fn read_skill_lock() -> Result<SkillLockFile> {
 /// Returns an error on I/O failure.
 pub async fn write_skill_lock(lock: &SkillLockFile) -> Result<()> {
     let path = lock_file_path();
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| Error::io(parent, e))?;
-    }
-    let content = serde_json::to_string_pretty(lock)?;
-    tokio::fs::write(&path, content)
+    let parent = path.parent().expect("lock file path has parent");
+    tokio::fs::create_dir_all(parent)
         .await
-        .map_err(|e| Error::io(path, e))
+        .map_err(|e| Error::io(parent, e))?;
+
+    let content = serde_json::to_string_pretty(lock)?;
+
+    // Atomic write: write to a temp file in the same directory, then rename.
+    // This prevents corruption if the process is interrupted mid-write.
+    let tmp_path = parent.join(".skill-lock.tmp");
+    tokio::fs::write(&tmp_path, &content)
+        .await
+        .map_err(|e| Error::io(&tmp_path, e))?;
+    tokio::fs::rename(&tmp_path, &path)
+        .await
+        .map_err(|e| Error::io(&path, e))
 }
 
 /// Add or update a skill entry in the global lock file.
@@ -294,7 +301,15 @@ pub async fn fetch_skill_folder_hash(
         .trim_end_matches('/')
         .to_owned();
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| {
+            Error::io(
+                PathBuf::from("<network>"),
+                std::io::Error::other(e.to_string()),
+            )
+        })?;
 
     for branch in &["main", "master"] {
         let url =
@@ -351,7 +366,9 @@ pub async fn fetch_skill_folder_hash(
 #[cfg(feature = "network")]
 pub async fn is_repo_private(owner: &str, repo: &str) -> Result<Option<bool>> {
     let url = format!("https://api.github.com/repos/{owner}/{repo}");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
     let resp = client
         .get(&url)
         .header("User-Agent", "skills-cli-rs")

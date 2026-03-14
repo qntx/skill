@@ -62,8 +62,12 @@ pub fn sanitize_name(name: &str) -> String {
 }
 
 /// Validate that `target_path` is within `base_path`.
+///
+/// Uses purely lexical normalization so the result is consistent regardless
+/// of whether the paths exist on disk (important during fresh installs).
 fn is_path_safe(base_path: &Path, target_path: &Path) -> bool {
-    crate::path_util::normalize(target_path).starts_with(crate::path_util::normalize(base_path))
+    crate::path_util::normalize_absolute(target_path)
+        .starts_with(crate::path_util::normalize_absolute(base_path))
 }
 
 /// Get the canonical `.agents/skills` directory.

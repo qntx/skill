@@ -19,9 +19,10 @@ pub fn lexical_normalize(path: &Path) -> PathBuf {
             Component::ParentDir => {
                 match components.last() {
                     // Never pop root / prefix — clamp at filesystem root
-                    Some(Component::RootDir | Component::Prefix(_)) | None => {}
-                    Some(Component::ParentDir) => {
-                        // Already unresolvable relative `..`, keep stacking
+                    Some(Component::RootDir | Component::Prefix(_)) => {}
+                    // Stack is empty (relative path) or previous is also `..`
+                    // — keep the `..` so relative traversals are preserved
+                    None | Some(Component::ParentDir) => {
                         components.push(comp);
                     }
                     _ => {
@@ -77,4 +78,76 @@ pub fn normalize(path: &Path) -> PathBuf {
 pub fn normalize_absolute(path: &Path) -> PathBuf {
     let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
     lexical_normalize(&absolute)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lexical_normalize_resolves_dot_and_dotdot() {
+        let p = lexical_normalize(Path::new("a/b/../c/./d"));
+        assert_eq!(p, PathBuf::from("a/c/d"));
+    }
+
+    #[test]
+    fn lexical_normalize_empty_path() {
+        let p = lexical_normalize(Path::new(""));
+        assert_eq!(p, PathBuf::from("."));
+    }
+
+    #[test]
+    fn lexical_normalize_only_dots() {
+        let p = lexical_normalize(Path::new("."));
+        assert_eq!(p, PathBuf::from("."));
+    }
+
+    #[test]
+    fn lexical_normalize_relative_leading_dotdot_preserved() {
+        let p = lexical_normalize(Path::new("../../a/b"));
+        // Leading .. on a relative path can't be resolved — must be kept
+        assert_eq!(p, PathBuf::from("../../a/b"));
+    }
+
+    #[test]
+    fn lexical_normalize_relative_dotdot_beyond_components() {
+        // a/../../b → a/.. resolves to empty, ../b remains
+        let p = lexical_normalize(Path::new("a/../../b"));
+        assert_eq!(p, PathBuf::from("../b"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lexical_normalize_absolute_stays_absolute() {
+        let p = lexical_normalize(Path::new("/tmp/repo/../../etc/passwd"));
+        assert_eq!(p, PathBuf::from("/etc/passwd"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lexical_normalize_absolute_dotdot_past_root_clamps() {
+        let p = lexical_normalize(Path::new("/../../../etc"));
+        // `..` past root is clamped — absolute path stays absolute
+        assert_eq!(p, PathBuf::from("/etc"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lexical_normalize_root_only() {
+        let p = lexical_normalize(Path::new("/"));
+        assert_eq!(p, PathBuf::from("/"));
+    }
+
+    #[test]
+    fn sanitize_subpath_dotdot_blocked() {
+        // Verify normalize_absolute doesn't help bypass is_subpath_safe
+        let base = Path::new("/tmp/repo");
+        let target = base.join("../../etc/passwd");
+        let norm_base = normalize_absolute(base);
+        let norm_target = normalize_absolute(&target);
+        assert!(
+            !norm_target.starts_with(&norm_base),
+            "traversal must not pass: base={norm_base:?} target={norm_target:?}"
+        );
+    }
 }

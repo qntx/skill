@@ -11,9 +11,9 @@ pub mod init;
 pub mod install_lock;
 pub mod list;
 pub mod remove;
-pub mod self_update;
 pub mod sync;
 pub mod update;
+pub mod upgrade;
 
 /// A skill that was skipped during check/update (no trackable version info).
 pub struct SkippedSkill {
