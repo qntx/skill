@@ -404,13 +404,13 @@ struct RawModeGuard {
 }
 
 impl RawModeGuard {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             restore_cursor: false,
         }
     }
 
-    fn with_hidden_cursor() -> Self {
+    const fn with_hidden_cursor() -> Self {
         Self {
             restore_cursor: true,
         }
@@ -465,7 +465,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
     };
 
     terminal::enable_raw_mode()?;
-    let _guard = RawModeGuard::new();
+    let guard = RawModeGuard::new();
 
     // Drain any stale key events left in the terminal buffer by the previous
     // prompt (e.g. cliclack::multiselect). Without this, a residual Enter
@@ -509,7 +509,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                     &selected,
                     &mut height,
                 )?;
-                drop(_guard);
+                drop(guard);
                 let mut result = locked_values;
                 for item in &opts.items {
                     if selected.contains(&item.value) {
@@ -529,7 +529,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                     &selected,
                     &mut height,
                 )?;
-                drop(_guard);
+                drop(guard);
                 return Ok(SearchMultiselectResult::Cancelled);
             }
             KeyCode::Up => cursor = cursor.saturating_sub(1),
@@ -684,7 +684,7 @@ where
     let mut last_input = std::time::Instant::now();
 
     terminal::enable_raw_mode()?;
-    let _guard = RawModeGuard::with_hidden_cursor();
+    let guard = RawModeGuard::with_hidden_cursor();
 
     // Drain stale key events from previous prompts.
     while event::poll(std::time::Duration::from_millis(50))? {
@@ -785,6 +785,7 @@ where
                         &mut height,
                     )?;
                     cleanup(&mut stdout)?;
+                    drop(guard);
                     return Ok(FzfResult::Selected(value));
                 }
             }
@@ -805,6 +806,7 @@ where
                     &mut height,
                 )?;
                 cleanup(&mut stdout)?;
+                drop(guard);
                 return Ok(FzfResult::Cancelled);
             }
             KeyCode::Up => cursor = cursor.saturating_sub(1),

@@ -125,7 +125,11 @@ async fn download_asset(url: &str) -> Result<Vec<u8>> {
 fn extract_binary_from_archive(archive: &[u8], asset_name: &str) -> Result<Vec<u8>> {
     let exe_name = format!("skills{}", std::env::consts::EXE_SUFFIX);
 
-    if asset_name.ends_with(".tar.gz") || asset_name.ends_with(".tgz") {
+    if asset_name.ends_with(".tar.gz")
+        || Path::new(asset_name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("tgz"))
+    {
         let decoder = flate2::read::GzDecoder::new(Cursor::new(archive));
         let mut tar = tar::Archive::new(decoder);
 
@@ -141,7 +145,10 @@ fn extract_binary_from_archive(archive: &[u8], asset_name: &str) -> Result<Vec<u
         }
 
         Err(miette!("Binary '{exe_name}' not found in tar.gz archive"))
-    } else if asset_name.ends_with(".zip") {
+    } else if Path::new(asset_name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zip"))
+    {
         let mut zip = zip::ZipArchive::new(Cursor::new(archive)).into_diagnostic()?;
 
         for i in 0..zip.len() {
