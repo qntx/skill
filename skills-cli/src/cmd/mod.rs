@@ -29,6 +29,12 @@ pub const fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
 
 /// Human-readable skip reason for a lock entry.
 pub fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
+    if entry.source_type == "local" {
+        return "Local path".to_owned();
+    }
+    if entry.source_type == "git" {
+        return "Git URL (hash tracking not supported)".to_owned();
+    }
     if entry.skill_folder_hash.is_empty() {
         return "No version hash available".to_owned();
     }

@@ -153,7 +153,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
 
     println!();
-    let _ = cliclack::intro("skills experimental_sync");
+    let _ = cliclack::intro("\x1b[46m\x1b[30m skills experimental_sync \x1b[0m");
 
     let spinner = cliclack::spinner();
 

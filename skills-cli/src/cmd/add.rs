@@ -105,7 +105,7 @@ pub async fn run(mut args: AddArgs) -> Result<()> {
     }
 
     println!();
-    let _ = cliclack::intro(" skills ");
+    let _ = cliclack::intro("\x1b[46m\x1b[30m skills \x1b[0m");
 
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;

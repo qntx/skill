@@ -11,6 +11,7 @@ use skill::types::{
 
 pub(super) struct SkillInstallOutcome {
     pub skill_name: String,
+    pub plugin_name: Option<String>,
     pub canonical_path: Option<PathBuf>,
     pub universal_agents: Vec<String>,
     pub symlinked_agents: Vec<String>,
@@ -56,6 +57,7 @@ pub(super) async fn do_install(
     for skill_item in selected_skills {
         let mut outcome = SkillInstallOutcome {
             skill_name: skill_item.name.clone(),
+            plugin_name: skill_item.plugin_name.clone(),
             canonical_path: None,
             universal_agents: Vec::new(),
             symlinked_agents: Vec::new(),
@@ -135,6 +137,7 @@ pub(super) async fn install_wellknown_skills(
     for wk in wk_skills {
         let mut outcome = SkillInstallOutcome {
             skill_name: wk.remote.name.clone(),
+            plugin_name: None,
             canonical_path: None,
             universal_agents: Vec::new(),
             symlinked_agents: Vec::new(),

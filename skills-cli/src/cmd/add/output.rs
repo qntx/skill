@@ -102,7 +102,7 @@ pub(super) async fn print_installation_summary(
     if !ungrouped.is_empty() {
         if !grouped.is_empty() {
             lines.push(String::new());
-            lines.push("\x1b[1m\x1b[0m".to_owned());
+            lines.push("\x1b[1mGeneral\x1b[0m".to_owned());
         }
         print_skill_summary(&mut lines, &ungrouped, &overwrites);
     }
@@ -160,7 +160,54 @@ fn build_agent_summary_lines(
     lines
 }
 
-/// Print the post-install results.
+fn append_outcome_lines(lines: &mut Vec<String>, outcomes: &[&SkillInstallOutcome], cwd: &Path) {
+    for outcome in outcomes {
+        let is_copy_mode = !outcome.copied_agents.is_empty()
+            && outcome.symlinked_agents.is_empty()
+            && outcome.symlink_failed_agents.is_empty();
+
+        if is_copy_mode {
+            lines.push(format!(
+                "{GREEN}\u{2713}{RESET} {} {DIM}(copied){RESET}",
+                outcome.skill_name
+            ));
+            for p in &outcome.copy_paths {
+                let short = ui::shorten_path_with_cwd(p, cwd);
+                lines.push(format!("  {DIM}\u{2192}{RESET} {short}"));
+            }
+        } else if let Some(ref canonical) = outcome.canonical_path {
+            let short = ui::shorten_path_with_cwd(canonical, cwd);
+            lines.push(format!("{GREEN}\u{2713}{RESET} {short}"));
+            append_agent_lines(lines, outcome);
+        } else {
+            lines.push(format!("{GREEN}\u{2713}{RESET} {}", outcome.skill_name));
+            append_agent_lines(lines, outcome);
+        }
+    }
+}
+
+fn append_agent_lines(lines: &mut Vec<String>, outcome: &SkillInstallOutcome) {
+    if !outcome.universal_agents.is_empty() {
+        lines.push(format!(
+            "  {GREEN}universal:{RESET} {}",
+            ui::format_list(&outcome.universal_agents)
+        ));
+    }
+    if !outcome.symlinked_agents.is_empty() {
+        lines.push(format!(
+            "  {DIM}symlinked:{RESET} {}",
+            ui::format_list(&outcome.symlinked_agents)
+        ));
+    }
+    if !outcome.symlink_failed_agents.is_empty() {
+        lines.push(format!(
+            "  {YELLOW}copied:{RESET} {}",
+            ui::format_list(&outcome.symlink_failed_agents)
+        ));
+    }
+}
+
+/// Print the post-install results, grouped by plugin name (matching TS).
 pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path) {
     let successful: Vec<&SkillInstallOutcome> = outcomes
         .iter()
@@ -179,49 +226,33 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
     if !successful.is_empty() {
         let mut result_lines: Vec<String> = Vec::new();
 
-        for outcome in &successful {
-            let is_copy_mode = !outcome.copied_agents.is_empty()
-                && outcome.symlinked_agents.is_empty()
-                && outcome.symlink_failed_agents.is_empty();
-
-            if is_copy_mode {
-                result_lines.push(format!(
-                    "{GREEN}\u{2713}{RESET} {} {DIM}(copied){RESET}",
-                    outcome.skill_name
-                ));
-                for p in &outcome.copy_paths {
-                    let short = ui::shorten_path_with_cwd(p, cwd);
-                    result_lines.push(format!("  {DIM}\u{2192}{RESET} {short}"));
-                }
+        let mut grouped: BTreeMap<String, Vec<&SkillInstallOutcome>> = BTreeMap::new();
+        let mut ungrouped: Vec<&SkillInstallOutcome> = Vec::new();
+        for o in &successful {
+            if let Some(ref plugin) = o.plugin_name {
+                grouped.entry(plugin.clone()).or_default().push(o);
             } else {
-                if let Some(ref canonical) = outcome.canonical_path {
-                    let short = ui::shorten_path_with_cwd(canonical, cwd);
-                    result_lines.push(format!("{GREEN}\u{2713}{RESET} {short}"));
-                } else {
-                    result_lines.push(format!("{GREEN}\u{2713}{RESET} {}", outcome.skill_name));
-                }
-
-                if !outcome.universal_agents.is_empty() {
-                    result_lines.push(format!(
-                        "  {GREEN}universal:{RESET} {}",
-                        ui::format_list(&outcome.universal_agents)
-                    ));
-                }
-                if !outcome.symlinked_agents.is_empty() {
-                    result_lines.push(format!(
-                        "  {DIM}symlinked:{RESET} {}",
-                        ui::format_list(&outcome.symlinked_agents)
-                    ));
-                }
-                let all_copied: Vec<&String> = outcome.symlink_failed_agents.iter().collect();
-                if !all_copied.is_empty() {
-                    let names: Vec<String> = all_copied.into_iter().cloned().collect();
-                    result_lines.push(format!(
-                        "  {YELLOW}copied:{RESET} {}",
-                        ui::format_list(&names)
-                    ));
-                }
+                ungrouped.push(o);
             }
+        }
+
+        for (group, entries) in &grouped {
+            let title = kebab_to_title(group);
+            result_lines.push(String::new());
+            result_lines.push(format!("\x1b[1m{title}\x1b[0m"));
+            append_outcome_lines(&mut result_lines, entries, cwd);
+        }
+
+        if !ungrouped.is_empty() {
+            if !grouped.is_empty() {
+                result_lines.push(String::new());
+                result_lines.push("\x1b[1mGeneral\x1b[0m".to_owned());
+            }
+            append_outcome_lines(&mut result_lines, &ungrouped, cwd);
+        }
+
+        if result_lines.first().is_some_and(String::is_empty) {
+            result_lines.remove(0);
         }
 
         let skill_count = successful.len();
