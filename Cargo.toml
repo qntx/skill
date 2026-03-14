@@ -41,6 +41,11 @@ reqwest = { version = "0.13.2", default-features = false, features = ["json", "r
 urlencoding = "2.1.3"
 url = "2.5.8"
 
+# Archive extraction
+flate2 = "1.1.9"
+tar = "0.4.44"
+zip = { version = "8.2.0", default-features = false, features = ["deflate"] }
+
 # Utilities
 sha2 = "0.10.9"
 regex = "1.12.3"
