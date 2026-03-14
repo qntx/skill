@@ -6,13 +6,17 @@ use std::path::Path;
 use skill::SkillManager;
 use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 
+use skill::telemetry::AuditResponse;
+
 use crate::ui::{self, DIM, GREEN, RESET, YELLOW};
 
 use super::install::SkillInstallOutcome;
 use super::select::kebab_to_title;
 
 /// Print a pre-confirmation installation summary box.
-pub(super) fn print_installation_summary(
+///
+/// Checks each skill×agent for existing installs and shows overwrite warnings.
+pub(super) async fn print_installation_summary(
     skills: &[Skill],
     agents: &[AgentId],
     manager: &SkillManager,
@@ -21,6 +25,23 @@ pub(super) fn print_installation_summary(
     cwd: &Path,
 ) {
     let mut lines: Vec<String> = Vec::new();
+
+    // Check overwrite status for each skill×agent pair
+    let mut overwrites: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for s in skills {
+        let mut overwrite_agents = Vec::new();
+        for aid in agents {
+            if let Some(config) = manager.agents().get(aid)
+                && skill::installer::is_skill_installed(&s.name, config, scope, cwd).await
+            {
+                overwrite_agents.push(config.display_name.clone());
+            }
+        }
+        if !overwrite_agents.is_empty() {
+            overwrites.insert(s.name.clone(), overwrite_agents);
+        }
+    }
 
     let mut grouped: BTreeMap<String, Vec<&Skill>> = BTreeMap::new();
     let mut ungrouped: Vec<&Skill> = Vec::new();
@@ -32,23 +53,33 @@ pub(super) fn print_installation_summary(
         }
     }
 
-    let print_skill_summary = |lines: &mut Vec<String>, skill_list: &[&Skill]| {
-        for s in skill_list {
-            if !lines.is_empty() {
-                lines.push(String::new());
+    let print_skill_summary =
+        |lines: &mut Vec<String>,
+         skill_list: &[&Skill],
+         overwrites: &std::collections::HashMap<String, Vec<String>>| {
+            for s in skill_list {
+                if !lines.is_empty() {
+                    lines.push(String::new());
+                }
+                let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
+                let short = ui::shorten_path_with_cwd(&canonical, cwd);
+                lines.push(format!("\x1b[36m{short}\x1b[0m"));
+                lines.extend(build_agent_summary_lines(agents, manager, mode));
+
+                if let Some(ow_agents) = overwrites.get(&s.name) {
+                    lines.push(format!(
+                        "  {YELLOW}overwrites:{RESET} {}",
+                        ui::format_list(ow_agents)
+                    ));
+                }
             }
-            let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
-            let short = ui::shorten_path_with_cwd(&canonical, cwd);
-            lines.push(format!("\x1b[36m{short}\x1b[0m"));
-            lines.extend(build_agent_summary_lines(agents, manager, mode));
-        }
-    };
+        };
 
     for (group, skill_list) in &grouped {
         let title = kebab_to_title(group);
         lines.push(String::new());
         lines.push(format!("\x1b[1m{title}\x1b[0m"));
-        print_skill_summary(&mut lines, skill_list);
+        print_skill_summary(&mut lines, skill_list, &overwrites);
     }
 
     if !ungrouped.is_empty() {
@@ -56,10 +87,10 @@ pub(super) fn print_installation_summary(
             lines.push(String::new());
             lines.push("\x1b[1m\x1b[0m".to_owned());
         }
-        print_skill_summary(&mut lines, &ungrouped);
+        print_skill_summary(&mut lines, &ungrouped, &overwrites);
     }
 
-    if lines.first().is_some_and(|l| l.is_empty()) {
+    if lines.first().is_some_and(String::is_empty) {
         lines.remove(0);
     }
 
@@ -219,5 +250,92 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
                 ));
             }
         }
+    }
+}
+
+/// Display security audit results from partner scanners.
+///
+/// Shows a compact table with risk assessments from Gen, Socket, and Snyk.
+/// Silently returns if no audit data is available.
+pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill], source: &str) {
+    // Check if we have any meaningful audit data
+    let has_any = skills
+        .iter()
+        .any(|s| audit_data.get(&s.name).is_some_and(|d| !d.is_empty()));
+    if !has_any {
+        return;
+    }
+
+    let name_width = skills
+        .iter()
+        .map(|s| s.name.len())
+        .max()
+        .unwrap_or(10)
+        .min(36);
+
+    let mut lines: Vec<String> = Vec::new();
+
+    // Header
+    lines.push(format!(
+        "{:width$}  {DIM}{:<16}{:<16}{}{RESET}",
+        "",
+        "Gen",
+        "Socket",
+        "Snyk",
+        width = name_width,
+    ));
+
+    // Rows
+    for skill in skills {
+        let display_name = if skill.name.len() > name_width {
+            format!("{}\u{2026}", &skill.name[..name_width - 1])
+        } else {
+            skill.name.clone()
+        };
+
+        let data = audit_data.get(&skill.name);
+
+        let ath_col = data
+            .and_then(|d| d.get("ath"))
+            .map_or_else(|| format!("{DIM}--{RESET}"), |a| risk_label(&a.risk));
+        let socket_col = data.and_then(|d| d.get("socket")).map_or_else(
+            || format!("{DIM}--{RESET}"),
+            |a| {
+                let count = a.alerts.unwrap_or(0);
+                if count > 0 {
+                    format!(
+                        "\x1b[31m{} alert{}\x1b[0m",
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    )
+                } else {
+                    format!("{GREEN}0 alerts{RESET}")
+                }
+            },
+        );
+        let snyk_col = data
+            .and_then(|d| d.get("snyk"))
+            .map_or_else(|| format!("{DIM}--{RESET}"), |a| risk_label(&a.risk));
+
+        lines.push(format!(
+            "\x1b[36m{display_name:<name_width$}\x1b[0m  {ath_col:<16}{socket_col:<16}{snyk_col}",
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!("{DIM}Details: https://skills.sh/{source}{RESET}"));
+
+    let body = lines.join("\n");
+    let _ = cliclack::note("Security Risk Assessments", body);
+}
+
+fn risk_label(risk: &str) -> String {
+    match risk {
+        "critical" => "\x1b[31m\x1b[1mCritical Risk\x1b[0m".to_owned(),
+        "high" => "\x1b[31mHigh Risk\x1b[0m".to_owned(),
+        "medium" => format!("{YELLOW}Med Risk{RESET}"),
+        "low" => format!("{GREEN}Low Risk{RESET}"),
+        "safe" => format!("{GREEN}Safe{RESET}"),
+        _ => format!("{DIM}--{RESET}"),
     }
 }

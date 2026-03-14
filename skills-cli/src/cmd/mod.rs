@@ -20,7 +20,7 @@ pub struct SkippedSkill {
 }
 
 /// Whether a lock entry should be skipped (not enough info to check).
-pub fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
+pub const fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
     entry.skill_folder_hash.is_empty() || entry.skill_path.is_none()
 }
 

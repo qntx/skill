@@ -19,6 +19,7 @@ regex = { workspace = true }
 dirs = { workspace = true }
 pathdiff = { workspace = true }
 tempfile = { workspace = true }
+urlencoding = { workspace = true }
 reqwest = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]

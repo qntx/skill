@@ -66,6 +66,8 @@ async fn main() -> miette::Result<()> {
         .without_time()
         .init();
 
+    skill::telemetry::set_version(env!("CARGO_PKG_VERSION"));
+
     let cli = Cli::parse();
 
     match cli.command {

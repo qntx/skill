@@ -106,7 +106,7 @@ fn to_fzf_items(skills: &[SearchSkill]) -> Vec<ui::FzfItem> {
             };
             ui::FzfItem {
                 label: s.name.clone(),
-                hint: pkg.to_string(),
+                hint: pkg.clone(),
                 description: format_installs(s.installs),
                 value: format!("{pkg}@{}", s.name),
             }

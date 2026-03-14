@@ -5,6 +5,8 @@ mod install;
 mod output;
 mod select;
 
+pub use select::select_agents;
+
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -119,7 +121,7 @@ async fn run_single_source(
     manager: &SkillManager,
     cwd: &Path,
 ) -> Result<Option<Vec<AgentId>>> {
-    let parsed = manager.parse_source(source);
+    let mut parsed = manager.parse_source(source);
 
     let source_display = if parsed.source_type == SourceType::Local {
         parsed
@@ -135,7 +137,7 @@ async fn run_single_source(
         args.skill.get_or_insert_with(Vec::new).push(filter.clone());
     }
 
-    hooks::prompt_security_advisory(&parsed, args.yes).await?;
+    hooks::prompt_security_advisory(&mut parsed, args.yes).await?;
 
     if parsed.source_type == SourceType::WellKnown {
         return handle_wellknown_source(&parsed, args, manager, cwd).await;
@@ -170,13 +172,34 @@ async fn run_single_source(
         return Ok(None);
     }
 
+    // Start audit fetch in parallel before user selection (matching TS pattern)
+    let owner_repo_for_audit = skill::source::get_owner_repo(&parsed);
+    let skill_slugs: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
+    let audit_handle = if parsed.is_private.unwrap_or(false) {
+        None
+    } else {
+        let source_id = owner_repo_for_audit.clone().unwrap_or_default();
+        Some(tokio::spawn(async move {
+            skill::telemetry::fetch_audit_data(&source_id, &skill_slugs).await
+        }))
+    };
+
     let selected_skills = select::select_skills(&skills, args.skill.as_ref(), args.yes)?;
-    let target_agents = select::select_agents(manager, args.agent.as_ref(), args.yes).await?;
+    let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
 
     let scope = select::resolve_scope(args.global, args.yes, &target_agents, manager)?;
     let mode = select::resolve_mode(args.copy, args.yes)?;
 
-    output::print_installation_summary(&selected_skills, &target_agents, manager, scope, mode, cwd);
+    output::print_installation_summary(&selected_skills, &target_agents, manager, scope, mode, cwd)
+        .await;
+
+    // Await and display security audit results (started earlier in parallel)
+    if let Some(handle) = audit_handle
+        && let Ok(Some(audit_data)) = handle.await
+        && let Some(ref source) = owner_repo_for_audit
+    {
+        output::print_security_audit(&audit_data, &selected_skills, source);
+    }
 
     if !args.yes {
         let confirmed: bool = cliclack::confirm("Proceed with installation?")
@@ -254,7 +277,7 @@ async fn handle_wellknown_source(
         return Ok(None);
     }
 
-    let target_agents = select::select_agents(manager, args.agent.as_ref(), args.yes).await?;
+    let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
     let scope = select::resolve_scope(args.global, args.yes, &target_agents, manager)?;
     let mode = select::resolve_mode(args.copy, args.yes)?;
 

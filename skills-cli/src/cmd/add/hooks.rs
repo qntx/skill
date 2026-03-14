@@ -15,30 +15,50 @@ pub(super) fn send_telemetry(
     target_agents: &[AgentId],
     scope: InstallScope,
 ) {
+    // Skip telemetry for private repos (matching TS behavior)
+    if parsed.is_private.unwrap_or(false) {
+        return;
+    }
+
     let Some(source_str) = skill::source::get_owner_repo(parsed) else {
         return;
     };
+
+    let skills_csv = selected_skills
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    let agents_csv = target_agents
+        .iter()
+        .map(|a| a.as_str().to_owned())
+        .collect::<Vec<_>>()
+        .join(",");
+
     let mut props = HashMap::new();
     props.insert("source".to_owned(), source_str);
-    props.insert(
-        "skills".to_owned(),
-        selected_skills
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect::<Vec<_>>()
-            .join(","),
-    );
-    props.insert(
-        "agents".to_owned(),
-        target_agents
-            .iter()
-            .map(|a| a.as_str().to_owned())
-            .collect::<Vec<_>>()
-            .join(","),
-    );
+    props.insert("skills".to_owned(), skills_csv);
+    props.insert("agents".to_owned(), agents_csv);
+    props.insert("sourceType".to_owned(), parsed.source_type.to_string());
     if scope == InstallScope::Global {
         props.insert("global".to_owned(), "1".to_owned());
     }
+
+    // Include skillFiles mapping (skill name → relative path from source)
+    let skill_files: HashMap<&str, String> = selected_skills
+        .iter()
+        .map(|s| {
+            let rel = parsed
+                .subpath
+                .as_deref()
+                .map_or_else(|| s.name.clone(), |sp| format!("{sp}/{}", s.name));
+            (s.name.as_str(), rel)
+        })
+        .collect();
+    if let Ok(json) = serde_json::to_string(&skill_files) {
+        props.insert("skillFiles".to_owned(), json);
+    }
+
     skill::telemetry::track("install", props);
 }
 
@@ -67,12 +87,14 @@ pub(super) fn send_wellknown_telemetry(
     }
 }
 
-/// Warn when installing from a private GitHub repository.
+/// Check if the source is a private GitHub repository.
+///
+/// Sets `parsed.is_private` and prompts the user when private.
 pub(super) async fn prompt_security_advisory(
-    parsed: &skill::types::ParsedSource,
+    parsed: &mut skill::types::ParsedSource,
     yes: bool,
 ) -> Result<()> {
-    if yes || parsed.source_type != SourceType::Github {
+    if parsed.source_type != SourceType::Github {
         return Ok(());
     }
 
@@ -88,7 +110,9 @@ pub(super) async fn prompt_security_advisory(
         .ok()
         .flatten();
 
-    if is_private == Some(true) {
+    parsed.is_private = is_private;
+
+    if is_private == Some(true) && !yes {
         println!();
         println!(
             "\x1b[33m\u{26a0}  Security notice:\x1b[0m {TEXT}{owner}/{repo}{RESET} is a \x1b[33m\x1b[1mprivate\x1b[0m repository."
@@ -124,18 +148,17 @@ pub(super) async fn prompt_for_find_skills(
         return;
     }
 
-    if let Some(agent) = manager.agents().get(&AgentId::new("claude-code")) {
-        if skill::installer::is_skill_installed(
+    if let Some(agent) = manager.agents().get(&AgentId::new("claude-code"))
+        && skill::installer::is_skill_installed(
             "find-skills",
             agent,
             InstallScope::Global,
             &std::env::current_dir().unwrap_or_default(),
         )
         .await
-        {
-            let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
-            return;
-        }
+    {
+        let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
+        return;
     }
 
     println!();

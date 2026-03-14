@@ -29,6 +29,10 @@ pub enum Error {
         url: String,
         /// Error description.
         message: String,
+        /// Whether the clone timed out.
+        is_timeout: bool,
+        /// Whether the error is an authentication failure.
+        is_auth_error: bool,
     },
 
     /// An HTTP request failed.

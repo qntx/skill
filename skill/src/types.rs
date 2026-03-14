@@ -170,6 +170,8 @@ pub struct ParsedSource {
     pub git_ref: Option<String>,
     /// Skill name filter from `@skill` syntax.
     pub skill_filter: Option<String>,
+    /// Whether the source is a private repository (set after API check).
+    pub is_private: Option<bool>,
 }
 
 /// Installation mode: symlink (default) or copy.

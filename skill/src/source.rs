@@ -59,6 +59,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: Some(resolved),
             git_ref: None,
             skill_filter: None,
+            is_private: None,
         };
     }
 
@@ -75,6 +76,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: Some(git_ref.to_owned()),
             skill_filter: None,
+            is_private: None,
         };
     }
 
@@ -90,6 +92,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: Some(git_ref.to_owned()),
             skill_filter: None,
+            is_private: None,
         };
     }
 
@@ -104,6 +107,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: None,
+            is_private: None,
         };
     }
 
@@ -122,6 +126,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
                 local_path: None,
                 git_ref: Some(git_ref.to_owned()),
                 skill_filter: None,
+                is_private: None,
             };
         }
     }
@@ -140,6 +145,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
                 local_path: None,
                 git_ref: Some(git_ref.to_owned()),
                 skill_filter: None,
+                is_private: None,
             };
         }
     }
@@ -155,6 +161,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
                 local_path: None,
                 git_ref: None,
                 skill_filter: None,
+                is_private: None,
             };
         }
     }
@@ -175,6 +182,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: Some(skill_filter.to_owned()),
+            is_private: None,
         };
     }
 
@@ -194,6 +202,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: None,
+            is_private: None,
         };
     }
 
@@ -206,6 +215,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: None,
+            is_private: None,
         };
     }
 
@@ -217,6 +227,7 @@ pub fn parse_source(input: &str) -> ParsedSource {
         local_path: None,
         git_ref: None,
         skill_filter: None,
+        is_private: None,
     }
 }
 

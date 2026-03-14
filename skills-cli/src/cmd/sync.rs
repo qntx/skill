@@ -140,6 +140,7 @@ struct SyncInstallErr {
 }
 
 /// Run the `experimental_sync` command.
+#[allow(clippy::cognitive_complexity)]
 pub async fn run(args: SyncArgs) -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let node_modules = cwd.join("node_modules");
@@ -192,7 +193,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     if up_to_date > 0 {
         let _ = cliclack::log::info(format!(
             "{DIM}{up_to_date} skill{} already up to date{RESET}",
-            if up_to_date != 1 { "s" } else { "" }
+            if up_to_date == 1 { "" } else { "s" }
         ));
     }
 
@@ -205,7 +206,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     let _ = cliclack::log::info(format!(
         "{} skill{} to install/update",
         skills_to_sync.len(),
-        if skills_to_sync.len() != 1 { "s" } else { "" }
+        if skills_to_sync.len() == 1 { "" } else { "s" }
     ));
 
     let target_agents: Vec<AgentId> =
@@ -327,7 +328,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         let title = format!(
             "\x1b[32mSynced {} skill{}\x1b[0m",
             skill_count,
-            if skill_count != 1 { "s" } else { "" }
+            if skill_count == 1 { "" } else { "s" }
         );
         let _ = cliclack::note(title, result_lines.join("\n"));
     }

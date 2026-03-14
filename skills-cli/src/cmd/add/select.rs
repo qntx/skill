@@ -13,13 +13,10 @@ pub(super) fn kebab_to_title(s: &str) -> String {
     s.split('-')
         .map(|w| {
             let mut c = w.chars();
-            match c.next() {
-                None => String::new(),
-                Some(first) => {
-                    let upper: String = first.to_uppercase().collect();
-                    upper + c.as_str()
-                }
-            }
+            c.next().map_or_else(String::new, |first| {
+                let upper: String = first.to_uppercase().collect();
+                upper + c.as_str()
+            })
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -59,7 +56,7 @@ pub(super) fn select_skills(
         println!(
             "{TEXT}Selected {} skill{}: {}{RESET}",
             filtered.len(),
-            if filtered.len() != 1 { "s" } else { "" },
+            if filtered.len() == 1 { "" } else { "s" },
             display.join(", ")
         );
         return Ok(filtered);
@@ -106,7 +103,7 @@ pub(super) fn select_skills(
         for (group, items) in &groups {
             prompt = prompt.item(
                 format!("__group__{group}"),
-                &format!("\x1b[1m{group}\x1b[0m"),
+                format!("\x1b[1m{group}\x1b[0m"),
                 "",
             );
             for (skill, hint) in items {
@@ -133,7 +130,7 @@ pub(super) fn select_skills(
     } else {
         let mut prompt = cliclack::multiselect("Select skills to install");
         for s in &sorted {
-            prompt = prompt.item(s.name.clone(), &s.name, &truncate_hint(&s.description, 60));
+            prompt = prompt.item(s.name.clone(), &s.name, truncate_hint(&s.description, 60));
         }
         prompt = prompt.required(true);
 
@@ -182,7 +179,7 @@ pub async fn select_agents(
                     .join(", "),
                 valid_ids
                     .iter()
-                    .map(|id| id.as_str())
+                    .map(AgentId::as_str)
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
