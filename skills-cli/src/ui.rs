@@ -397,11 +397,32 @@ fn build_multiselect_lines(
 }
 
 /// RAII guard that ensures `terminal::disable_raw_mode()` is called on drop,
-/// even if the function returns early via `?` or panics.
-struct RawModeGuard;
+/// even if the function returns early via `?` or panics. Optionally restores
+/// cursor visibility when `hide_cursor` was set.
+struct RawModeGuard {
+    restore_cursor: bool,
+}
+
+impl RawModeGuard {
+    fn new() -> Self {
+        Self {
+            restore_cursor: false,
+        }
+    }
+
+    fn with_hidden_cursor() -> Self {
+        Self {
+            restore_cursor: true,
+        }
+    }
+}
 
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
+        if self.restore_cursor {
+            let _ = write!(io::stdout(), "\x1b[?25h");
+            let _ = io::stdout().flush();
+        }
         let _ = terminal::disable_raw_mode();
     }
 }
@@ -444,7 +465,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
     };
 
     terminal::enable_raw_mode()?;
-    let _guard = RawModeGuard;
+    let _guard = RawModeGuard::new();
 
     // Drain any stale key events left in the terminal buffer by the previous
     // prompt (e.g. cliclack::multiselect). Without this, a residual Enter
@@ -663,7 +684,7 @@ where
     let mut last_input = std::time::Instant::now();
 
     terminal::enable_raw_mode()?;
-    let _guard = RawModeGuard;
+    let _guard = RawModeGuard::with_hidden_cursor();
 
     // Drain stale key events from previous prompts.
     while event::poll(std::time::Duration::from_millis(50))? {
