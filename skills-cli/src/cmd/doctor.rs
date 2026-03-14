@@ -139,8 +139,7 @@ async fn check_broken_symlinks(manager: &SkillManager, cwd: &Path, findings: &mu
                         broken_count += 1;
                         let target = tokio::fs::read_link(&path)
                             .await
-                            .map(|t| t.display().to_string())
-                            .unwrap_or_else(|_| "unknown".to_owned());
+                            .map_or_else(|_| "unknown".to_owned(), |t| t.display().to_string());
                         findings.push(Finding {
                             severity: Severity::Error,
                             category: "Broken Symlinks",

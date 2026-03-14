@@ -113,7 +113,7 @@ async fn main() -> miette::Result<()> {
             }
             Commands::Completions(args) => {
                 let mut command = Cli::command();
-                cmd::completions::run(&args, &mut command)?;
+                cmd::completions::run(&args, &mut command);
             }
             Commands::Doctor => {
                 ui::show_logo();
