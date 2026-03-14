@@ -166,11 +166,7 @@ async fn check_broken_symlinks(manager: &SkillManager, cwd: &Path, findings: &mu
 }
 
 /// Check global lock file consistency.
-async fn check_lock_consistency(
-    manager: &SkillManager,
-    cwd: &Path,
-    findings: &mut Vec<Finding>,
-) {
+async fn check_lock_consistency(manager: &SkillManager, cwd: &Path, findings: &mut Vec<Finding>) {
     let Ok(lock) = skill::lock::read_skill_lock().await else {
         findings.push(Finding {
             severity: Severity::Warning,
@@ -211,8 +207,7 @@ async fn check_lock_consistency(
                 category: "Global Lock File",
                 message: format!("Lock entry \"{name}\" has no matching files on disk"),
                 hint: Some(
-                    "Reinstall with: skills add <source> -g  or remove entry manually"
-                        .to_owned(),
+                    "Reinstall with: skills add <source> -g  or remove entry manually".to_owned(),
                 ),
             });
         }
