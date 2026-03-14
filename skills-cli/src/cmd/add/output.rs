@@ -294,7 +294,7 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
 
     // Header
     lines.push(format!(
-        "{:width$}  {DIM}{:<16}{:<16}{}{RESET}",
+        "{:width$}  {DIM}{}  {}  {}{RESET}",
         "",
         "Gen",
         "Socket",
@@ -339,7 +339,7 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
             .map_or_else(|| format!("{DIM}--{RESET}"), |a| risk_label(&a.risk));
 
         lines.push(format!(
-            "\x1b[36m{display_name:<name_width$}\x1b[0m  {ath_col:<16}{socket_col:<16}{snyk_col}",
+            "\x1b[36m{display_name:<name_width$}\x1b[0m  {ath_col}  {socket_col}  {snyk_col}",
         ));
     }
 

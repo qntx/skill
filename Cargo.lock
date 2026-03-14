@@ -1707,7 +1707,7 @@ dependencies = [
 
 [[package]]
 name = "skill"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "dirs",
  "junction",
@@ -1728,7 +1728,7 @@ dependencies = [
 
 [[package]]
 name = "skills-cli"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "clap",
  "clap_complete",

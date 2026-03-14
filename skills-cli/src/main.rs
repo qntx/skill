@@ -44,7 +44,6 @@ enum Commands {
     Check,
 
     /// Update all skills to latest versions.
-    #[command(visible_alias = "upgrade")]
     Update,
 
     /// Initialize a skill (creates SKILL.md).

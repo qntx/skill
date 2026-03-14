@@ -396,6 +396,16 @@ fn build_multiselect_lines(
     lines
 }
 
+/// RAII guard that ensures `terminal::disable_raw_mode()` is called on drop,
+/// even if the function returns early via `?` or panics.
+struct RawModeGuard;
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        let _ = terminal::disable_raw_mode();
+    }
+}
+
 /// Run the interactive search multiselect prompt.
 ///
 /// # Errors
@@ -434,6 +444,15 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
     };
 
     terminal::enable_raw_mode()?;
+    let _guard = RawModeGuard;
+
+    // Drain any stale key events left in the terminal buffer by the previous
+    // prompt (e.g. cliclack::multiselect). Without this, a residual Enter
+    // keypress can auto-confirm this prompt instantly.
+    while event::poll(std::time::Duration::from_millis(50))? {
+        let _ = event::read()?;
+    }
+
     render(
         &mut stdout,
         PromptState::Active,
@@ -469,7 +488,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                     &selected,
                     &mut height,
                 )?;
-                terminal::disable_raw_mode()?;
+                drop(_guard);
                 let mut result = locked_values;
                 for item in &opts.items {
                     if selected.contains(&item.value) {
@@ -489,7 +508,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
                     &selected,
                     &mut height,
                 )?;
-                terminal::disable_raw_mode()?;
+                drop(_guard);
                 return Ok(SearchMultiselectResult::Cancelled);
             }
             KeyCode::Up => cursor = cursor.saturating_sub(1),
@@ -644,13 +663,19 @@ where
     let mut last_input = std::time::Instant::now();
 
     terminal::enable_raw_mode()?;
+    let _guard = RawModeGuard;
+
+    // Drain stale key events from previous prompts.
+    while event::poll(std::time::Duration::from_millis(50))? {
+        let _ = event::read()?;
+    }
+
     write!(stdout, "\x1b[?25l")?;
     stdout.flush()?;
 
     let cleanup = |stdout: &mut io::Stdout| -> io::Result<()> {
         write!(stdout, "\x1b[?25h")?;
-        stdout.flush()?;
-        terminal::disable_raw_mode()
+        stdout.flush()
     };
 
     render_lines(
