@@ -14,8 +14,7 @@ use skill::SkillManager;
 use skill::installer::canonical_skills_dir;
 use skill::types::{AgentId, InstallScope, RemoveOptions};
 
-const DIM: &str = "\x1b[38;5;102m";
-const RESET: &str = "\x1b[0m";
+use crate::ui::{DIM, RESET};
 
 /// Arguments for the `remove` command.
 #[derive(Args)]
@@ -215,7 +214,7 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
     remove_spinner.start("Removing skills...");
 
     let agents_for_telemetry = target_agents.clone();
-    let results = manager
+    manager
         .remove_skills(
             &selected,
             &RemoveOptions {
@@ -229,29 +228,10 @@ pub async fn run(mut args: RemoveArgs) -> Result<()> {
 
     remove_spinner.stop("Removal process complete");
 
-    let success_count = results.iter().filter(|r| r.success).count();
-    let fail_count = results.iter().filter(|r| !r.success).count();
-
-    if success_count > 0 {
-        let _ = cliclack::log::success(format!(
-            "\x1b[32mSuccessfully removed {success_count} skill(s)\x1b[0m"
-        ));
-    }
-    if fail_count > 0 {
-        let _ = cliclack::log::error(format!(
-            "\x1b[31mFailed to remove {fail_count} skill(s)\x1b[0m"
-        ));
-        for r in &results {
-            if !r.success
-                && let Some(ref err) = r.error
-            {
-                let _ = cliclack::log::remark(format!(
-                    " \x1b[31m\u{2717}\x1b[0m {}: {DIM}{err}{RESET}",
-                    r.skill
-                ));
-            }
-        }
-    }
+    let _ = cliclack::log::success(format!(
+        "\x1b[32mSuccessfully removed {} skill(s)\x1b[0m",
+        selected.len()
+    ));
 
     // Clean up lock files: global lock for --global, local lock for project scope.
     if args.global {

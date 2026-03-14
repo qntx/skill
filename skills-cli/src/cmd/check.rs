@@ -7,48 +7,9 @@ use std::collections::HashMap;
 
 use miette::Result;
 
-const DIM: &str = "\x1b[38;5;102m";
-const TEXT: &str = "\x1b[38;5;145m";
-const RESET: &str = "\x1b[0m";
+use crate::ui::{DIM, RESET, TEXT};
 
-/// Reason a skill was skipped during check.
-struct SkippedSkill {
-    name: String,
-    reason: String,
-    source_url: String,
-}
-
-fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
-    if entry.skill_folder_hash.is_empty() {
-        return "No version hash available".to_owned();
-    }
-    if entry.skill_path.is_none() {
-        return "No skill path recorded".to_owned();
-    }
-    "No version tracking".to_owned()
-}
-
-fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
-    entry.skill_folder_hash.is_empty() || entry.skill_path.is_none()
-}
-
-fn print_skipped_skills(skipped: &[SkippedSkill]) {
-    if skipped.is_empty() {
-        return;
-    }
-    println!();
-    println!(
-        "{DIM}{} skill(s) cannot be checked automatically:{RESET}",
-        skipped.len()
-    );
-    for s in skipped {
-        println!("  {TEXT}•{RESET} {} {DIM}({}){RESET}", s.name, s.reason);
-        println!(
-            "    {DIM}To update: {TEXT}skills add {} -g -y{RESET}",
-            s.source_url
-        );
-    }
-}
+use super::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
 
 /// Run the check command.
 pub async fn run() -> Result<()> {

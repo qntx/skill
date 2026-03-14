@@ -215,10 +215,9 @@ impl SkillManager {
         &self,
         skill_names: &[String],
         options: &RemoveOptions,
-    ) -> Result<Vec<RemoveResult>> {
+    ) -> Result<()> {
         let cwd = options.cwd.clone().unwrap_or_else(|| self.cwd());
         let scope = options.scope;
-        let mut results = Vec::new();
 
         for name in skill_names {
             let canonical = installer::get_canonical_path(name, scope, &cwd);
@@ -285,25 +284,8 @@ impl SkillManager {
                 let _ = tokio::fs::remove_dir_all(&canonical).await;
                 let _ = tokio::fs::remove_file(&canonical).await;
             }
-
-            results.push(RemoveResult {
-                skill: name.clone(),
-                success: true,
-                error: None,
-            });
         }
 
-        Ok(results)
+        Ok(())
     }
-}
-
-/// Result of a removal operation.
-#[derive(Debug, Clone)]
-pub struct RemoveResult {
-    /// Skill name.
-    pub skill: String,
-    /// Whether the removal succeeded.
-    pub success: bool,
-    /// Error message if failed.
-    pub error: Option<String>,
 }

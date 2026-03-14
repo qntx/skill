@@ -16,10 +16,7 @@ use skill::local_lock::{self, LocalSkillLockEntry};
 use skill::skills::discover_skills;
 use skill::types::{AgentId, DiscoverOptions, InstallMode, InstallOptions, InstallScope, Skill};
 
-use crate::ui;
-
-const DIM: &str = "\x1b[38;5;102m";
-const RESET: &str = "\x1b[0m";
+use crate::ui::{self, DIM, RESET};
 
 /// Arguments for the `experimental_sync` command.
 #[derive(Args)]
@@ -37,10 +34,7 @@ pub struct SyncArgs {
     pub force: bool,
 }
 
-async fn scan_node_modules(
-    node_modules: &Path,
-    discover_opts: &DiscoverOptions,
-) -> Vec<Skill> {
+async fn scan_node_modules(node_modules: &Path, discover_opts: &DiscoverOptions) -> Vec<Skill> {
     let mut skills = Vec::new();
     let Ok(mut entries) = tokio::fs::read_dir(node_modules).await else {
         return skills;
@@ -131,13 +125,18 @@ fn derive_package_name(skill_path: &Path, node_modules: &Path) -> String {
     }
 }
 
-struct SyncInstallResult {
+struct SyncInstallOk {
     skill: String,
     package_name: String,
+    #[allow(dead_code)]
     agent: String,
-    success: bool,
     canonical_path: Option<PathBuf>,
-    error: Option<String>,
+}
+
+struct SyncInstallErr {
+    skill: String,
+    agent: String,
+    error: String,
 }
 
 /// Run the `experimental_sync` command.
@@ -177,19 +176,14 @@ pub async fn run(args: SyncArgs) -> Result<()> {
 
     for s in &all_skills {
         let pkg = derive_package_name(&s.path, &node_modules);
-        let _ = cliclack::log::info(format!(
-            "\x1b[36m{}\x1b[0m {DIM}from {pkg}{RESET}",
-            s.name
-        ));
+        let _ = cliclack::log::info(format!("\x1b[36m{}\x1b[0m {DIM}from {pkg}{RESET}", s.name));
         if !s.description.is_empty() {
             let _ = cliclack::log::remark(format!("  {DIM}{}{RESET}", s.description));
         }
     }
 
     let (skills_to_sync, up_to_date) = if args.force {
-        let _ = cliclack::log::info(format!(
-            "{DIM}Force mode: reinstalling all skills{RESET}"
-        ));
+        let _ = cliclack::log::info(format!("{DIM}Force mode: reinstalling all skills{RESET}"));
         (all_skills, 0)
     } else {
         filter_outdated(all_skills, &cwd).await
@@ -219,8 +213,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
 
     let mut summary_lines: Vec<String> = Vec::new();
     for s in &skills_to_sync {
-        let canonical =
-            skill::installer::get_canonical_path(&s.name, InstallScope::Project, &cwd);
+        let canonical = skill::installer::get_canonical_path(&s.name, InstallScope::Project, &cwd);
         let short = ui::shorten_path_with_cwd(&canonical, &cwd);
         let pkg = derive_package_name(&s.path, &node_modules);
         summary_lines.push(format!(
@@ -254,7 +247,8 @@ pub async fn run(args: SyncArgs) -> Result<()> {
         cwd: Some(cwd.clone()),
     };
 
-    let mut results: Vec<SyncInstallResult> = Vec::new();
+    let mut successful: Vec<SyncInstallOk> = Vec::new();
+    let mut failed: Vec<SyncInstallErr> = Vec::new();
 
     for skill_item in &skills_to_sync {
         let pkg = derive_package_name(&skill_item.path, &node_modules);
@@ -265,34 +259,19 @@ pub async fn run(args: SyncArgs) -> Result<()> {
                 .map_or_else(|| agent_id.to_string(), |c| c.display_name.clone());
 
             match manager.install_skill(skill_item, agent_id, &opts).await {
-                Ok(r) if r.success => {
-                    results.push(SyncInstallResult {
-                        skill: skill_item.name.clone(),
-                        package_name: pkg.clone(),
-                        agent: display_name,
-                        success: true,
-                        canonical_path: r.canonical_path,
-                        error: None,
-                    });
-                }
                 Ok(r) => {
-                    results.push(SyncInstallResult {
+                    successful.push(SyncInstallOk {
                         skill: skill_item.name.clone(),
                         package_name: pkg.clone(),
                         agent: display_name,
-                        success: false,
-                        canonical_path: None,
-                        error: r.error,
+                        canonical_path: r.canonical_path,
                     });
                 }
                 Err(e) => {
-                    results.push(SyncInstallResult {
+                    failed.push(SyncInstallErr {
                         skill: skill_item.name.clone(),
-                        package_name: pkg.clone(),
                         agent: display_name,
-                        success: false,
-                        canonical_path: None,
-                        error: Some(format!("{e}")),
+                        error: format!("{e}"),
                     });
                 }
             }
@@ -301,8 +280,6 @@ pub async fn run(args: SyncArgs) -> Result<()> {
 
     sync_spinner.stop("Sync complete");
 
-    let successful: Vec<&SyncInstallResult> = results.iter().filter(|r| r.success).collect();
-    let failed: Vec<&SyncInstallResult> = results.iter().filter(|r| !r.success).collect();
     let successful_skill_names: HashSet<&str> =
         successful.iter().map(|r| r.skill.as_str()).collect();
 
@@ -328,7 +305,7 @@ pub async fn run(args: SyncArgs) -> Result<()> {
     println!();
 
     if !successful.is_empty() {
-        let mut by_skill: BTreeMap<&str, Vec<&SyncInstallResult>> = BTreeMap::new();
+        let mut by_skill: BTreeMap<&str, Vec<&SyncInstallOk>> = BTreeMap::new();
         for r in &successful {
             by_skill.entry(r.skill.as_str()).or_default().push(r);
         }
@@ -357,12 +334,9 @@ pub async fn run(args: SyncArgs) -> Result<()> {
 
     if !failed.is_empty() {
         println!();
-        let _ = cliclack::log::error(format!(
-            "\x1b[31mFailed to install {}\x1b[0m",
-            failed.len()
-        ));
+        let _ = cliclack::log::error(format!("\x1b[31mFailed to install {}\x1b[0m", failed.len()));
         for r in &failed {
-            let err = r.error.as_deref().unwrap_or("unknown");
+            let err = &r.error;
             let _ = cliclack::log::remark(format!(
                 "  \x1b[31m\u{2717}\x1b[0m {} \u{2192} {}: {DIM}{err}{RESET}",
                 r.skill, r.agent

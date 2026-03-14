@@ -60,32 +60,7 @@ pub fn sanitize_name(name: &str) -> String {
 
 /// Validate that `target_path` is within `base_path`.
 fn is_path_safe(base_path: &Path, target_path: &Path) -> bool {
-    normalize_path(target_path).starts_with(normalize_path(base_path))
-}
-
-/// Best-effort path normalization for safety checks.
-///
-/// On Windows, `std::fs::canonicalize` returns UNC paths (`\\?\C:\...`)
-/// which don't compare equal to regular paths from `std::path::absolute`.
-/// We strip the prefix to ensure consistent `starts_with` comparisons
-/// between existing and not-yet-existing paths.
-fn normalize_path(p: &Path) -> PathBuf {
-    let path = std::fs::canonicalize(p)
-        .or_else(|_| std::path::absolute(p))
-        .unwrap_or_else(|_| p.to_path_buf());
-    strip_unc_prefix(path)
-}
-
-/// Strip the `\\?\` UNC prefix that Windows `canonicalize` produces.
-#[cfg(windows)]
-fn strip_unc_prefix(path: PathBuf) -> PathBuf {
-    let s = path.to_string_lossy().into_owned();
-    s.strip_prefix("\\\\?\\").map_or(path, PathBuf::from)
-}
-
-#[cfg(not(windows))]
-fn strip_unc_prefix(path: PathBuf) -> PathBuf {
-    path
+    crate::path_util::normalize(target_path).starts_with(crate::path_util::normalize(base_path))
 }
 
 /// Get the canonical `.agents/skills` directory.
@@ -163,12 +138,10 @@ pub async fn install_skill_for_agent(
         clean_and_create(&agent_dir).await?;
         copy_directory(&skill.path, &agent_dir).await?;
         return Ok(InstallResult {
-            success: true,
             path: agent_dir,
             canonical_path: None,
             mode: InstallMode::Copy,
             symlink_failed: false,
-            error: None,
         });
     }
 
@@ -178,12 +151,10 @@ pub async fn install_skill_for_agent(
 
     if scope == InstallScope::Global && registry.is_universal(&agent.name) {
         return Ok(InstallResult {
-            success: true,
             path: canonical_dir.clone(),
             canonical_path: Some(canonical_dir),
             mode: InstallMode::Symlink,
             symlink_failed: false,
-            error: None,
         });
     }
 
@@ -194,12 +165,10 @@ pub async fn install_skill_for_agent(
     }
 
     Ok(InstallResult {
-        success: true,
         path: agent_dir,
         canonical_path: Some(canonical_dir),
         mode: InstallMode::Symlink,
         symlink_failed: !symlink_ok,
-        error: None,
     })
 }
 
@@ -249,12 +218,10 @@ pub async fn install_remote_skill_content(
             .await
             .map_err(|e| Error::io(&agent_dir, e))?;
         return Ok(InstallResult {
-            success: true,
             path: agent_dir,
             canonical_path: None,
             mode: InstallMode::Copy,
             symlink_failed: false,
-            error: None,
         });
     }
 
@@ -265,12 +232,10 @@ pub async fn install_remote_skill_content(
 
     if scope == InstallScope::Global && registry.is_universal(&agent.name) {
         return Ok(InstallResult {
-            success: true,
             path: canonical_dir.clone(),
             canonical_path: Some(canonical_dir),
             mode: InstallMode::Symlink,
             symlink_failed: false,
-            error: None,
         });
     }
 
@@ -283,12 +248,10 @@ pub async fn install_remote_skill_content(
     }
 
     Ok(InstallResult {
-        success: true,
         path: agent_dir,
         canonical_path: Some(canonical_dir),
         mode: InstallMode::Symlink,
         symlink_failed: !symlink_ok,
-        error: None,
     })
 }
 
@@ -361,12 +324,10 @@ pub async fn install_wellknown_skill_files(
         clean_and_create(&agent_dir).await?;
         write_files(&agent_dir).await?;
         return Ok(InstallResult {
-            success: true,
             path: agent_dir,
             canonical_path: None,
             mode: InstallMode::Copy,
             symlink_failed: false,
-            error: None,
         });
     }
 
@@ -375,12 +336,10 @@ pub async fn install_wellknown_skill_files(
 
     if scope == InstallScope::Global && registry.is_universal(&agent.name) {
         return Ok(InstallResult {
-            success: true,
             path: canonical_dir.clone(),
             canonical_path: Some(canonical_dir),
             mode: InstallMode::Symlink,
             symlink_failed: false,
-            error: None,
         });
     }
 
@@ -391,12 +350,10 @@ pub async fn install_wellknown_skill_files(
     }
 
     Ok(InstallResult {
-        success: true,
         path: agent_dir,
         canonical_path: Some(canonical_dir),
         mode: InstallMode::Symlink,
         symlink_failed: !symlink_ok,
-        error: None,
     })
 }
 

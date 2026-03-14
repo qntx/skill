@@ -5,7 +5,7 @@
 //! `plugin-manifest.ts` implementation.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -36,32 +36,9 @@ struct PluginManifest {
 
 /// Check if a path is contained within a base directory.
 fn is_contained_in(target_path: &Path, base_path: &Path) -> bool {
-    let normalized_base = normalize_resolve(base_path);
-    let normalized_target = normalize_resolve(target_path);
+    let normalized_base = crate::path_util::normalize_absolute(base_path);
+    let normalized_target = crate::path_util::normalize_absolute(target_path);
     normalized_target.starts_with(&normalized_base)
-}
-
-/// Best-effort normalize + resolve.
-fn normalize_resolve(path: &Path) -> PathBuf {
-    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-    lexical_normalize(&absolute)
-}
-
-/// Lexical path normalization (resolve `.` and `..` without filesystem access).
-fn lexical_normalize(path: &Path) -> PathBuf {
-    let mut components = Vec::new();
-    for comp in path.components() {
-        match comp {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !components.is_empty() {
-                    components.pop();
-                }
-            }
-            other => components.push(other),
-        }
-    }
-    components.iter().collect()
 }
 
 /// Validate that a relative path starts with `./` (per Claude Code convention).
@@ -199,7 +176,7 @@ pub async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> 
                         }
                         let skill_dir = plugin_base.join(skill_path);
                         if is_contained_in(&skill_dir, base_path) {
-                            let resolved = normalize_resolve(&skill_dir);
+                            let resolved = crate::path_util::normalize_absolute(&skill_dir);
                             groupings.insert(resolved, plugin_name.clone());
                         }
                     }
@@ -221,7 +198,7 @@ pub async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> 
             }
             let skill_dir = base_path.join(skill_path);
             if is_contained_in(&skill_dir, base_path) {
-                let resolved = normalize_resolve(&skill_dir);
+                let resolved = crate::path_util::normalize_absolute(&skill_dir);
                 groupings.insert(resolved, plugin_name.clone());
             }
         }

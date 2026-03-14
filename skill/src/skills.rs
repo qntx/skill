@@ -5,7 +5,7 @@
 //! scanning.
 
 use std::collections::HashSet;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
 use crate::types::{DiscoverOptions, Skill};
@@ -155,46 +155,9 @@ async fn find_skill_dirs(dir: &Path, depth: usize) -> Vec<PathBuf> {
 #[must_use]
 pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
     let target = base_path.join(subpath);
-    let normalized_base = normalize_path(base_path);
-    let normalized_target = normalize_path(&target);
+    let normalized_base = crate::path_util::normalize(base_path);
+    let normalized_target = crate::path_util::normalize(&target);
     normalized_target.starts_with(&normalized_base)
-}
-
-/// Best-effort path normalization: canonical if possible, lexical otherwise.
-///
-/// On Windows, strips the `\\?\` UNC prefix that `canonicalize` produces
-/// to ensure consistent `starts_with` comparisons.
-fn normalize_path(path: &Path) -> PathBuf {
-    let p = std::fs::canonicalize(path).unwrap_or_else(|_| lexical_normalize(path));
-    strip_unc_prefix(p)
-}
-
-#[cfg(windows)]
-fn strip_unc_prefix(path: PathBuf) -> PathBuf {
-    let s = path.to_string_lossy().into_owned();
-    s.strip_prefix("\\\\?\\").map_or(path, PathBuf::from)
-}
-
-#[cfg(not(windows))]
-fn strip_unc_prefix(path: PathBuf) -> PathBuf {
-    path
-}
-
-/// Lexical path normalization (resolve `.` and `..` without filesystem access).
-fn lexical_normalize(path: &Path) -> PathBuf {
-    let mut components = Vec::new();
-    for comp in path.components() {
-        match comp {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !components.is_empty() {
-                    components.pop();
-                }
-            }
-            other => components.push(other),
-        }
-    }
-    components.iter().collect()
 }
 
 /// Discover skills under `base_path` (optionally scoped by `subpath`).

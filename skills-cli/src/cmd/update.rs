@@ -8,50 +8,15 @@ use std::collections::HashMap;
 
 use miette::Result;
 
-use super::add::RunAddOptions;
+use crate::ui::{DIM, RESET, TEXT};
 
-const DIM: &str = "\x1b[38;5;102m";
-const TEXT: &str = "\x1b[38;5;145m";
-const RESET: &str = "\x1b[0m";
+use super::add::RunAddOptions;
+use super::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
 
 struct UpdateEntry {
     name: String,
     source_url: String,
     skill_path: Option<String>,
-}
-
-struct SkippedSkill {
-    name: String,
-    reason: String,
-    source_url: String,
-}
-
-fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
-    if entry.skill_folder_hash.is_empty() {
-        return "No version hash available".to_owned();
-    }
-    if entry.skill_path.is_none() {
-        return "No skill path recorded".to_owned();
-    }
-    "No version tracking".to_owned()
-}
-
-fn print_skipped_skills(skipped: &[SkippedSkill]) {
-    if skipped.is_empty() {
-        return;
-    }
-    println!();
-    println!(
-        "{DIM}{} skill(s) cannot be checked automatically:{RESET}",
-        skipped.len()
-    );
-    for s in skipped {
-        println!("  {TEXT}•{RESET} {} {DIM}({}){RESET}", s.name, s.reason);
-        println!(
-            "    {DIM}To update: {TEXT}skills add {} -g -y{RESET}",
-            s.source_url
-        );
-    }
 }
 
 /// Build the install URL from `source_url` + `skill_path` (matches TS logic).
@@ -96,7 +61,7 @@ pub async fn run() -> Result<()> {
     let mut skipped: Vec<SkippedSkill> = Vec::new();
 
     for (name, entry) in &lock.skills {
-        if entry.skill_folder_hash.is_empty() || entry.skill_path.is_none() {
+        if should_skip(entry) {
             skipped.push(SkippedSkill {
                 name: name.clone(),
                 reason: get_skip_reason(entry),

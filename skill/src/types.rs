@@ -197,8 +197,6 @@ pub enum InstallScope {
 /// Result of a single skill installation.
 #[derive(Debug, Clone)]
 pub struct InstallResult {
-    /// Whether the installation succeeded.
-    pub success: bool,
     /// Path where the skill was installed.
     pub path: PathBuf,
     /// Canonical path (for symlink mode).
@@ -207,8 +205,6 @@ pub struct InstallResult {
     pub mode: InstallMode,
     /// Whether a symlink attempt failed and fell back to copy.
     pub symlink_failed: bool,
-    /// Error message if `success` is false.
-    pub error: Option<String>,
 }
 
 /// A skill that is currently installed.

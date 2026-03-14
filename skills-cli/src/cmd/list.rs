@@ -12,13 +12,7 @@ use miette::{IntoDiagnostic, Result};
 use skill::SkillManager;
 use skill::types::{AgentId, InstallScope, ListOptions};
 
-use crate::ui;
-
-const DIM: &str = "\x1b[38;5;102m";
-const CYAN: &str = "\x1b[36m";
-const YELLOW: &str = "\x1b[33m";
-const BOLD: &str = "\x1b[1m";
-const RESET: &str = "\x1b[0m";
+use crate::ui::{self, BOLD, CYAN, DIM, RESET, YELLOW};
 
 /// Arguments for the `list` command.
 #[derive(Args)]

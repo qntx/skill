@@ -30,9 +30,13 @@ const GRAYS: &[&str] = &[
     "\x1b[38;5;238m",
 ];
 
-const RESET: &str = "\x1b[0m";
-const DIM: &str = "\x1b[38;5;102m";
-const TEXT: &str = "\x1b[38;5;145m";
+pub const RESET: &str = "\x1b[0m";
+pub const DIM: &str = "\x1b[38;5;102m";
+pub const TEXT: &str = "\x1b[38;5;145m";
+pub const GREEN: &str = "\x1b[32m";
+pub const YELLOW: &str = "\x1b[33m";
+pub const CYAN: &str = "\x1b[36m";
+pub const BOLD: &str = "\x1b[1m";
 
 const S_STEP_ACTIVE: &str = "\x1b[32m◆\x1b[0m";
 const S_STEP_SUBMIT: &str = "\x1b[32m◇\x1b[0m";

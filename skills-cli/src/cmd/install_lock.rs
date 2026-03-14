@@ -13,9 +13,7 @@ use skill::SkillManager;
 
 use super::add::RunAddOptions;
 
-const DIM: &str = "\x1b[38;5;102m";
-const TEXT: &str = "\x1b[38;5;145m";
-const RESET: &str = "\x1b[0m";
+use crate::ui::{DIM, RESET, TEXT};
 
 /// Run the `experimental_install` command.
 pub async fn run() -> Result<()> {

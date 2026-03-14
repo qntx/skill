@@ -11,13 +11,7 @@ use std::sync::{Arc, Mutex};
 use clap::Args;
 use miette::{IntoDiagnostic, Result};
 
-use crate::ui;
-
-const DIM: &str = "\x1b[38;5;102m";
-const TEXT: &str = "\x1b[38;5;145m";
-const BOLD: &str = "\x1b[1m";
-const CYAN: &str = "\x1b[36m";
-const RESET: &str = "\x1b[0m";
+use crate::ui::{self, BOLD, CYAN, DIM, RESET, TEXT};
 
 /// Arguments for the `find` command.
 #[derive(Args)]
