@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 miette = { workspace = true }
 cliclack = { workspace = true }
 crossterm = { workspace = true }

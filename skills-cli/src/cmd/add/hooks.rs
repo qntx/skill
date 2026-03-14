@@ -197,6 +197,7 @@ pub(super) async fn prompt_for_find_skills(
             copy: false,
             all: false,
             full_depth: false,
+            dry_run: false,
         };
         let _ = Box::pin(super::run(add_args)).await;
     } else {

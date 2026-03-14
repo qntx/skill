@@ -114,6 +114,7 @@ pub async fn run() -> Result<()> {
             yes: true,
             skill_filter: Some(vec![update.name.clone()]),
             agent: None,
+            dry_run: false,
         })
         .await;
 

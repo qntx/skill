@@ -297,6 +297,7 @@ pub async fn run(args: FindArgs) -> Result<()> {
         all: false,
         full_depth: false,
         copy: false,
+        dry_run: false,
     };
 
     super::add::run(add_args).await?;

@@ -7,19 +7,33 @@
 use std::path::{Component, Path, PathBuf};
 
 /// Lexical path normalization: resolve `.` and `..` without filesystem access.
+///
+/// Preserves root / prefix components — `..` past the root is clamped rather
+/// than silently dropped, so absolute paths always stay absolute.
 #[must_use]
 pub fn lexical_normalize(path: &Path) -> PathBuf {
-    let mut components = Vec::new();
+    let mut components: Vec<Component<'_>> = Vec::new();
     for comp in path.components() {
         match comp {
             Component::CurDir => {}
             Component::ParentDir => {
-                if !components.is_empty() {
-                    components.pop();
+                match components.last() {
+                    // Never pop root / prefix — clamp at filesystem root
+                    Some(Component::RootDir | Component::Prefix(_)) | None => {}
+                    Some(Component::ParentDir) => {
+                        // Already unresolvable relative `..`, keep stacking
+                        components.push(comp);
+                    }
+                    _ => {
+                        components.pop();
+                    }
                 }
             }
             other => components.push(other),
         }
+    }
+    if components.is_empty() {
+        return PathBuf::from(".");
     }
     components.iter().collect()
 }

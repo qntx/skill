@@ -47,15 +47,18 @@ pub fn sanitize_name(name: &str) -> String {
     }
 
     let trimmed = collapsed.trim_matches(|c: char| c == '.' || c == '-');
-    let result = if trimmed.is_empty() {
-        "unnamed-skill"
-    } else if trimmed.len() > 255 {
-        &trimmed[..255]
-    } else {
-        trimmed
-    };
-
-    result.to_owned()
+    if trimmed.is_empty() {
+        return "unnamed-skill".to_owned();
+    }
+    if trimmed.len() <= 255 {
+        return trimmed.to_owned();
+    }
+    // Truncate at a char boundary to avoid UTF-8 panic
+    let mut end = 255;
+    while !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    trimmed[..end].to_owned()
 }
 
 /// Validate that `target_path` is within `base_path`.
@@ -537,6 +540,32 @@ pub async fn is_skill_installed(
             None => return false,
         },
         InstallScope::Project => cwd.join(&agent.skills_dir),
+    };
+    let skill_dir = target_base.join(sanitized);
+    if !is_path_safe(&target_base, &skill_dir) {
+        return false;
+    }
+    tokio::fs::try_exists(&skill_dir).await.unwrap_or(false)
+}
+
+/// Check if a skill is installed — owned-value variant for `tokio::spawn`.
+///
+/// Accepts fully owned values instead of `&AgentConfig` so the returned
+/// future is `Send + 'static`, safe for parallel spawning.
+pub async fn is_skill_installed_owned(
+    skill_name: String,
+    skills_dir: String,
+    global_skills_dir: Option<PathBuf>,
+    scope: InstallScope,
+    cwd: PathBuf,
+) -> bool {
+    let sanitized = sanitize_name(&skill_name);
+    let target_base = match scope {
+        InstallScope::Global => match global_skills_dir {
+            Some(d) => d,
+            None => return false,
+        },
+        InstallScope::Project => cwd.join(&skills_dir),
     };
     let skill_dir = target_base.join(sanitized);
     if !is_path_safe(&target_base, &skill_dir) {

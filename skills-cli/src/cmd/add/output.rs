@@ -26,20 +26,37 @@ pub(super) async fn print_installation_summary(
 ) {
     let mut lines: Vec<String> = Vec::new();
 
-    // Check overwrite status for each skill×agent pair
+    // Check overwrite status for each skill×agent pair (parallel)
     let mut overwrites: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
+    let mut join_set = tokio::task::JoinSet::new();
+
     for s in skills {
-        let mut overwrite_agents = Vec::new();
         for aid in agents {
-            if let Some(config) = manager.agents().get(aid)
-                && skill::installer::is_skill_installed(&s.name, config, scope, cwd).await
-            {
-                overwrite_agents.push(config.display_name.clone());
+            if let Some(config) = manager.agents().get(aid) {
+                let skill_name = s.name.clone();
+                let display_name = config.display_name.clone();
+                let skills_dir = config.skills_dir.clone();
+                let global_dir = config.global_skills_dir.clone();
+                let cwd = cwd.to_path_buf();
+                join_set.spawn(async move {
+                    let installed = skill::installer::is_skill_installed_owned(
+                        skill_name.clone(),
+                        skills_dir,
+                        global_dir,
+                        scope,
+                        cwd,
+                    )
+                    .await;
+                    (skill_name, display_name, installed)
+                });
             }
         }
-        if !overwrite_agents.is_empty() {
-            overwrites.insert(s.name.clone(), overwrite_agents);
+    }
+
+    while let Some(Ok((skill_name, display_name, installed))) = join_set.join_next().await {
+        if installed {
+            overwrites.entry(skill_name).or_default().push(display_name);
         }
     }
 

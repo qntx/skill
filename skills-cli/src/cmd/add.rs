@@ -55,6 +55,10 @@ pub struct AddArgs {
     /// Search all subdirectories even when a root `SKILL.md` exists.
     #[arg(long)]
     pub full_depth: bool,
+
+    /// Preview what would be installed without making changes.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 /// Options for `run_add` when called programmatically.
@@ -64,6 +68,7 @@ pub struct RunAddOptions {
     pub yes: bool,
     pub skill_filter: Option<Vec<String>>,
     pub agent: Option<Vec<String>>,
+    pub dry_run: bool,
 }
 
 /// Programmatic entry point used by `install_lock` and `update`.
@@ -78,6 +83,7 @@ pub async fn run_add(opts: RunAddOptions) -> Result<()> {
         copy: false,
         all: false,
         full_depth: false,
+        dry_run: opts.dry_run,
     };
     run(args).await
 }
@@ -199,6 +205,14 @@ async fn run_single_source(
         && let Some(ref source) = owner_repo_for_audit
     {
         output::print_security_audit(&audit_data, &selected_skills, source);
+    }
+
+    if args.dry_run {
+        println!();
+        let _ = cliclack::outro(format!(
+            "{DIM}Dry run complete — no changes were made.{RESET}"
+        ));
+        return Ok(Some(target_agents));
     }
 
     if !args.yes {

@@ -152,11 +152,23 @@ async fn find_skill_dirs(dir: &Path, depth: usize) -> Vec<PathBuf> {
 }
 
 /// Validate that a resolved subpath stays within the base directory.
+///
+/// Uses lexical normalization (no filesystem access) to ensure consistent
+/// behavior across environments where paths may not exist.
 #[must_use]
 pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
+    // Check for obvious path traversal patterns first
+    let normalized_subpath = subpath.replace('\\', "/");
+    for segment in normalized_subpath.split('/') {
+        if segment == ".." {
+            return false;
+        }
+    }
+
+    // Use lexical normalization for the full path check
     let target = base_path.join(subpath);
-    let normalized_base = crate::path_util::normalize(base_path);
-    let normalized_target = crate::path_util::normalize(&target);
+    let normalized_base = crate::path_util::normalize_absolute(base_path);
+    let normalized_target = crate::path_util::normalize_absolute(&target);
     normalized_target.starts_with(&normalized_base)
 }
 

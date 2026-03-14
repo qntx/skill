@@ -7,7 +7,7 @@
 mod cmd;
 mod ui;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 /// The open agent skills ecosystem.
 #[derive(Parser)]
@@ -57,6 +57,16 @@ enum Commands {
     /// Sync skills from `node_modules` into agent directories.
     #[command(name = "experimental_sync")]
     ExperimentalSync(cmd::sync::SyncArgs),
+
+    /// Generate shell completions.
+    Completions(cmd::completions::CompletionsArgs),
+
+    /// Check installation health (broken symlinks, lock consistency).
+    Doctor,
+
+    /// Update the skills CLI binary to the latest release.
+    #[command(name = "self-update")]
+    SelfUpdate,
 }
 
 #[tokio::main]
@@ -100,6 +110,18 @@ async fn main() -> miette::Result<()> {
             Commands::ExperimentalSync(args) => {
                 ui::show_logo();
                 cmd::sync::run(args).await?;
+            }
+            Commands::Completions(args) => {
+                let mut command = Cli::command();
+                cmd::completions::run(&args, &mut command)?;
+            }
+            Commands::Doctor => {
+                ui::show_logo();
+                cmd::doctor::run().await?;
+            }
+            Commands::SelfUpdate => {
+                ui::show_logo();
+                cmd::self_update::run().await?;
             }
         },
     }

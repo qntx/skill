@@ -4,11 +4,14 @@ use crate::ui::{DIM, RESET, TEXT};
 
 pub mod add;
 pub mod check;
+pub mod completions;
+pub mod doctor;
 pub mod find;
 pub mod init;
 pub mod install_lock;
 pub mod list;
 pub mod remove;
+pub mod self_update;
 pub mod sync;
 pub mod update;
 

@@ -79,7 +79,9 @@ while adding the performance and reliability benefits of a native compiled binar
 - **Symlink-first install** — canonical storage + per-agent symlinks (or junctions on Windows); copy mode available
 - **Lock files** — global (`~/.agents/.skill-lock.json`) and project-scoped (`skills-lock.json`) for reproducible setups
 - **Extensible providers** — `HostProvider` trait for adding custom skill hosts beyond GitHub / GitLab / well-known
-- **Telemetry-aware** — opt-in anonymous telemetry (respects `DO_NOT_TRACK` / `DISABLE_TELEMETRY`)
+- **Security audits** — displays partner security assessments (Gen, Socket, Snyk) before installation
+- **Overwrite detection** — shows which agents will have existing skills overwritten
+- **Telemetry-aware** — opt-in anonymous telemetry with CI detection (respects `DO_NOT_TRACK` / `DISABLE_TELEMETRY`)
 - **Cross-platform** — Linux, macOS, Windows (with native junction support)
 
 ## Source Formats
@@ -111,14 +113,14 @@ skills add https://example.com   # checks /.well-known/skills/index.json
 
 ## `skills add` Options
 
-| Option                    | Description                                                                     |
-| ------------------------- | ------------------------------------------------------------------------------- |
-| `-g, --global`            | Install to user directory instead of project                                    |
-| `-a, --agent <agents...>` | Target specific agents (e.g., `claude-code`, `cursor`). Use `'*'` for all       |
-| `-s, --skill <skills...>` | Install specific skills by name (use `'*'` for all skills)                      |
-| `-l, --list`              | List available skills without installing                                        |
-| `--copy`                  | Copy files instead of symlinking to agent directories                           |
-| `-y, --yes`               | Skip all confirmation prompts                                                   |
+| Option                    | Description                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------               |
+| `-g, --global`            | Install to user directory instead of project                                                  |
+| `-a, --agent <agents...>` | Target specific agents (e.g., `claude-code`, `cursor`). Use `'*'` for all                     |
+| `-s, --skill <skills...>` | Install specific skills by name (use `'*'` for all skills)                                    |
+| `-l, --list`              | List available skills without installing                                                      |
+| `--copy`                  | Copy files instead of symlinking to agent directories                                         |
+| `-y, --yes`               | Skip all confirmation prompts                                                                 |
 | `--all`                   | Install all skills to all agents without prompts (shorthand for `--skill '*' --agent '*' -y`) |
 
 ### Examples
@@ -160,8 +162,8 @@ skills add qntx/skills --agent '*' --skill frontend-design
 
 | Method                    | Description                                                                                  |
 | ------------------------- | -------------------------------------------------------------------------------------------- |
-| **Symlink** (Recommended) | Creates symlinks from each agent to a canonical copy. Single source of truth, easy updates. |
-| **Copy**                  | Creates independent copies for each agent. Use when symlinks aren't supported.              |
+| **Symlink** (Recommended) | Creates symlinks from each agent to a canonical copy. Single source of truth, easy updates.  |
+| **Copy**                  | Creates independent copies for each agent. Use when symlinks aren't supported.               |
 
 > **Note:** On Windows, junctions are used instead of symlinks for directory linking.
 
@@ -438,7 +440,7 @@ This enables compatibility with the [Claude Code plugin marketplace](https://cod
 | Flag        | Default | Description                                                                  |
 | ----------- | ------- | ---------------------------------------------------------------------------- |
 | `network`   | off     | Enables `reqwest`-based network operations (GitHub API, well-known fetching) |
-| `telemetry` | off     | Enables anonymous usage telemetry to `https://add-skill.vercel.sh/t`         |
+| `telemetry` | off     | Enables anonymous usage telemetry (GET requests with URL params)             |
 
 The CLI binary enables both flags. Library consumers can opt in selectively.
 
@@ -453,6 +455,7 @@ The CLI binary enables both flags. Library consumers can opt in selectively.
 | `GITHUB_TOKEN` / `GH_TOKEN`          | GitHub API token for update checks (falls back to `gh auth token`)     |
 | `SKILLS_API_URL`                     | Override the skills search API endpoint (default: `https://skills.sh`) |
 | `DISABLE_TELEMETRY` / `DO_NOT_TRACK` | Set to `1` or `true` to disable telemetry                              |
+| `GIT_TERMINAL_PROMPT`                | Set to `0` to disable git credential prompts (auto-set by CLI)         |
 
 ## Compatibility
 

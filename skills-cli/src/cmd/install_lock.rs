@@ -80,6 +80,7 @@ pub async fn run() -> Result<()> {
             yes: true,
             skill_filter: Some(skill_names.clone()),
             agent: Some(universal_agent_names.clone()),
+            dry_run: false,
         })
         .await;
 
