@@ -292,15 +292,14 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
 
     let mut lines: Vec<String> = Vec::new();
 
-    // Header
-    lines.push(format!(
-        "{:width$}  {DIM}{}  {}  {}{RESET}",
-        "",
-        "Gen",
-        "Socket",
-        "Snyk",
-        width = name_width,
-    ));
+    // Header — padEnd matching TS: empty name col + Gen(18) + Socket(18) + Snyk
+    let header = format!(
+        "{}{}{}",
+        ansi_pad_end("", name_width + 2),
+        ansi_pad_end(&format!("{DIM}Gen{RESET}"), 18),
+        ansi_pad_end(&format!("{DIM}Socket{RESET}"), 18),
+    );
+    lines.push(format!("{header}{DIM}Snyk{RESET}"));
 
     // Rows
     for skill in skills {
@@ -338,9 +337,14 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
             .and_then(|d| d.get("snyk"))
             .map_or_else(|| format!("{DIM}--{RESET}"), |a| risk_label(&a.risk));
 
-        lines.push(format!(
-            "\x1b[36m{display_name:<name_width$}\x1b[0m  {ath_col}  {socket_col}  {snyk_col}",
-        ));
+        let name_col = ansi_pad_end(&format!("\x1b[36m{display_name}\x1b[0m"), name_width + 2);
+        let row = format!(
+            "{name_col}{}{}{}",
+            ansi_pad_end(&ath_col, 18),
+            ansi_pad_end(&socket_col, 18),
+            snyk_col,
+        );
+        lines.push(row);
     }
 
     lines.push(String::new());
@@ -348,6 +352,26 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
 
     let body = lines.join("\n");
     let _ = cliclack::note("Security Risk Assessments", body);
+}
+
+/// Pad a string to a given visible width, ignoring ANSI escape codes.
+/// Matches the TS `padEnd` function exactly.
+fn ansi_pad_end(s: &str, width: usize) -> String {
+    let mut visible = 0;
+    let mut in_escape = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else {
+            visible += 1;
+        }
+    }
+    let pad = width.saturating_sub(visible);
+    format!("{s}{}", " ".repeat(pad))
 }
 
 fn risk_label(risk: &str) -> String {

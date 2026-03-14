@@ -9,8 +9,6 @@ use skill::types::{
     AgentId, InstallMode, InstallOptions, InstallResult, Skill, SourceType, WellKnownSkill,
 };
 
-use crate::ui::{RESET, TEXT};
-
 pub(super) struct SkillInstallOutcome {
     pub skill_name: String,
     pub canonical_path: Option<PathBuf>,
@@ -39,7 +37,6 @@ pub(super) async fn resolve_source(
         return Ok((local_path.clone(), None));
     }
 
-    println!("{TEXT}Cloning repository...{RESET}");
     let td = skill::git::clone_repo(&parsed.url, parsed.git_ref.as_deref())
         .await
         .map_err(|e| miette!("{e}"))?;

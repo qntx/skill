@@ -7,7 +7,7 @@ use miette::{IntoDiagnostic, Result, miette};
 use skill::SkillManager;
 use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 
-use crate::ui::{self, DIM, RESET, TEXT};
+use crate::ui::{self, DIM, RESET};
 
 pub(super) fn kebab_to_title(s: &str) -> String {
     s.split('-')
@@ -36,41 +36,48 @@ pub(super) fn select_skills(
     yes: bool,
 ) -> Result<Vec<Skill>> {
     if skill_filter.is_some_and(|s| s.contains(&"*".to_owned())) {
-        println!("{TEXT}Installing all {} skills{RESET}", skills.len());
+        let _ = cliclack::log::info(format!("Installing all {} skills", skills.len()));
         return Ok(skills.to_vec());
     }
 
     if let Some(names) = skill_filter {
         let filtered = skill::skills::filter_skills(skills, names);
         if filtered.is_empty() {
-            println!("{DIM}Available skills:{RESET}");
+            let _ = cliclack::log::error(format!(
+                "No matching skills found for: {}",
+                names.join(", ")
+            ));
+            let _ = cliclack::log::info("Available skills:");
             for s in skills {
-                println!("  {DIM}- {}{RESET}", s.name);
+                let _ = cliclack::log::remark(format!("  - {}", s.name));
             }
             return Err(miette!(
                 "No matching skills found for: {}",
                 names.join(", ")
             ));
         }
-        let display: Vec<String> = filtered.iter().map(|s| s.name.clone()).collect();
-        println!(
-            "{TEXT}Selected {} skill{}: {}{RESET}",
+        let display: Vec<String> = filtered
+            .iter()
+            .map(|s| format!("\x1b[36m{}\x1b[0m", s.name))
+            .collect();
+        let _ = cliclack::log::info(format!(
+            "Selected {} skill{}: {}",
             filtered.len(),
             if filtered.len() == 1 { "" } else { "s" },
             display.join(", ")
-        );
+        ));
         return Ok(filtered);
     }
 
     if skills.len() == 1 {
         let s = &skills[0];
-        println!("{TEXT}Skill: {}{RESET}", s.name);
-        println!("{DIM}{}{RESET}", s.description);
+        let _ = cliclack::log::info(format!("Skill: \x1b[36m{}\x1b[0m", s.name));
+        let _ = cliclack::log::remark(format!("{DIM}{}{RESET}", s.description));
         return Ok(skills.to_vec());
     }
 
     if yes {
-        println!("{TEXT}Installing all {} skills{RESET}", skills.len());
+        let _ = cliclack::log::info(format!("Installing all {} skills", skills.len()));
         return Ok(skills.to_vec());
     }
 
@@ -129,7 +136,9 @@ pub(super) fn select_skills(
             .cloned()
             .collect())
     } else {
-        let mut prompt = cliclack::multiselect("Select skills to install");
+        let mut prompt = cliclack::multiselect(format!(
+            "Select skills to install {DIM}(space to toggle){RESET}"
+        ));
         for s in &sorted {
             prompt = prompt.item(s.name.clone(), &s.name, truncate_hint(&s.description, 60));
         }
@@ -161,7 +170,7 @@ pub async fn select_agents(
     let all_ids = manager.agents().all_ids();
 
     if agent_arg.is_some_and(|a| a.contains(&"*".to_owned())) {
-        println!("{TEXT}Installing to all {} agents{RESET}", all_ids.len());
+        let _ = cliclack::log::info(format!("Installing to all {} agents", all_ids.len()));
         return Ok(all_ids);
     }
 
@@ -189,25 +198,34 @@ pub async fn select_agents(
         return Ok(names.iter().map(AgentId::new).collect());
     }
 
+    let spinner = cliclack::spinner();
+    spinner.start("Loading agents...");
     let detected = manager.detect_installed_agents().await;
+    let total_agents = all_ids.len();
+    spinner.stop(format!("{total_agents} agents"));
 
     if yes {
         return Ok(if detected.is_empty() {
-            println!("{TEXT}Installing to all agents{RESET}");
+            let _ = cliclack::log::info("Installing to all agents");
             all_ids
         } else {
             let agents = ensure_universal_agents(manager, detected.clone());
             let display: Vec<String> = agents
                 .iter()
-                .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
+                .filter_map(|id| {
+                    manager
+                        .agents()
+                        .get(id)
+                        .map(|c| format!("\x1b[36m{}\x1b[0m", c.display_name))
+                })
                 .collect();
-            println!("{TEXT}Installing to: {}{RESET}", display.join(", "));
+            let _ = cliclack::log::info(format!("Installing to: {}", display.join(", ")));
             agents
         });
     }
 
     if detected.is_empty() {
-        println!("{TEXT}Select agents to install skills to{RESET}");
+        let _ = cliclack::log::info("Select agents to install skills to");
         let items: Vec<ui::SearchItem> = all_ids
             .iter()
             .filter_map(|id| {
@@ -235,7 +253,7 @@ pub async fn select_agents(
                 Ok(values.into_iter().map(AgentId::new).collect())
             }
             ui::SearchMultiselectResult::Cancelled => {
-                println!("{DIM}Installation cancelled{RESET}");
+                let _ = cliclack::outro_cancel("Installation cancelled");
                 std::process::exit(0);
             }
         };
@@ -247,7 +265,7 @@ pub async fn select_agents(
             .first()
             .and_then(|id| manager.agents().get(id))
             .map_or_else(String::new, |c| c.display_name.clone());
-        println!("{TEXT}Installing to: {display_name}{RESET}");
+        let _ = cliclack::log::info(format!("Installing to: \x1b[36m{display_name}\x1b[0m"));
         return Ok(agents);
     }
 
@@ -314,7 +332,7 @@ pub async fn select_agents(
             Ok(values.into_iter().map(AgentId::new).collect())
         }
         ui::SearchMultiselectResult::Cancelled => {
-            println!("{DIM}Installation cancelled{RESET}");
+            let _ = cliclack::outro_cancel("Installation cancelled");
             std::process::exit(0);
         }
     }
