@@ -44,7 +44,7 @@ url = "2.5.8"
 # Archive extraction
 flate2 = "1.1.9"
 tar = "0.4.44"
-zip = { version = "8.2.0", default-features = false, features = ["deflate"] }
+zip = { version = "8.4.0", default-features = false, features = ["deflate"] }
 
 # Utilities
 sha2 = "0.10.9"
