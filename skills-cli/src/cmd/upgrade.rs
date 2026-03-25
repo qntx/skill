@@ -110,7 +110,7 @@ async fn fetch_latest_release() -> Result<GitHubRelease> {
 async fn download_asset(url: &str) -> Result<Vec<u8>> {
     let client = reqwest::Client::builder()
         .user_agent(format!("skills-cli/{}", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_mins(2))
         .build()
         .into_diagnostic()?;
 

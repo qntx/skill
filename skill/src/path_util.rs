@@ -53,7 +53,7 @@ pub fn strip_unc(path: PathBuf) -> PathBuf {
 /// No-op on non-Windows platforms.
 #[cfg(not(windows))]
 #[must_use]
-pub fn strip_unc(path: PathBuf) -> PathBuf {
+pub const fn strip_unc(path: PathBuf) -> PathBuf {
     path
 }
 
