@@ -1785,7 +1785,7 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "skill"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "dirs",
  "junction",
@@ -1806,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "skills-cli"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "clap",
  "clap_complete",
