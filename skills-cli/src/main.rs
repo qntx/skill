@@ -4,7 +4,7 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-mod cmd;
+mod commands;
 mod ui;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -26,19 +26,19 @@ struct Cli {
 enum Commands {
     /// Add a skill package.
     #[command(visible_aliases = &["a", "install", "i"])]
-    Add(cmd::add::AddArgs),
+    Add(commands::add::AddArgs),
 
     /// Remove installed skills.
     #[command(visible_aliases = &["rm", "r"])]
-    Remove(cmd::remove::RemoveArgs),
+    Remove(commands::remove::RemoveArgs),
 
     /// List installed skills.
     #[command(visible_alias = "ls")]
-    List(cmd::list::ListArgs),
+    List(commands::list::ListArgs),
 
     /// Search for skills interactively.
     #[command(visible_aliases = &["f", "s", "search"])]
-    Find(cmd::find::FindArgs),
+    Find(commands::find::FindArgs),
 
     /// Check for available skill updates.
     Check,
@@ -47,7 +47,7 @@ enum Commands {
     Update,
 
     /// Initialize a skill (creates SKILL.md).
-    Init(cmd::init::InitArgs),
+    Init(commands::init::InitArgs),
 
     /// Restore skills from skills-lock.json.
     #[command(name = "experimental_install")]
@@ -55,10 +55,10 @@ enum Commands {
 
     /// Sync skills from `node_modules` into agent directories.
     #[command(name = "experimental_sync")]
-    ExperimentalSync(cmd::sync::SyncArgs),
+    ExperimentalSync(commands::sync::SyncArgs),
 
     /// Generate shell completions.
-    Completions(cmd::completions::CompletionsArgs),
+    Completions(commands::completions::CompletionsArgs),
 
     /// Check installation health (broken symlinks, lock consistency).
     Doctor,
@@ -85,41 +85,41 @@ async fn main() -> miette::Result<()> {
         Some(cmd) => match cmd {
             Commands::Add(args) => {
                 ui::show_logo();
-                cmd::add::run(args).await?;
+                commands::add::run(args).await?;
             }
-            Commands::Remove(args) => cmd::remove::run(args).await?,
-            Commands::List(args) => cmd::list::run(args).await?,
+            Commands::Remove(args) => commands::remove::run(args).await?,
+            Commands::List(args) => commands::list::run(args).await?,
             Commands::Find(args) => {
                 ui::show_logo();
                 println!();
-                cmd::find::run(args).await?;
+                commands::find::run(args).await?;
             }
-            Commands::Check => cmd::check::run().await?,
-            Commands::Update => cmd::update::run().await?,
+            Commands::Check => commands::check::run().await?,
+            Commands::Update => commands::update::run().await?,
             Commands::Init(args) => {
                 ui::show_logo();
                 println!();
-                cmd::init::run(&args)?;
+                commands::init::run(&args)?;
             }
             Commands::ExperimentalInstall => {
                 ui::show_logo();
-                cmd::install_lock::run().await?;
+                commands::install_lock::run().await?;
             }
             Commands::ExperimentalSync(args) => {
                 ui::show_logo();
-                cmd::sync::run(args).await?;
+                commands::sync::run(args).await?;
             }
             Commands::Completions(args) => {
                 let mut command = Cli::command();
-                cmd::completions::run(&args, &mut command);
+                commands::completions::run(&args, &mut command);
             }
             Commands::Doctor => {
                 ui::show_logo();
-                cmd::doctor::run().await?;
+                commands::doctor::run().await?;
             }
             Commands::Upgrade => {
                 ui::show_logo();
-                cmd::upgrade::run().await?;
+                commands::upgrade::run().await?;
             }
         },
     }

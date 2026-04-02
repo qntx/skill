@@ -701,7 +701,10 @@ async fn create_symlink(target: &Path, link_path: &Path) -> bool {
             #[cfg(unix)]
             if let Ok(existing) = tokio::fs::read_link(link_path).await {
                 let existing_abs = if existing.is_relative() {
-                    link_path.parent().unwrap_or(Path::new(".")).join(&existing)
+                    link_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(&existing)
                 } else {
                     existing
                 };
@@ -731,7 +734,7 @@ async fn create_symlink(target: &Path, link_path: &Path) -> bool {
         // Use a relative symlink target, computed from the real (resolved)
         // parent of the link path, matching the TS implementation.
         let real_link_dir =
-            resolve_parent_symlinks(link_path.parent().unwrap_or(Path::new("."))).await;
+            resolve_parent_symlinks(link_path.parent().unwrap_or_else(|| Path::new("."))).await;
         let rel =
             pathdiff::diff_paths(target, &real_link_dir).unwrap_or_else(|| target.to_path_buf());
         tokio::fs::symlink(&rel, link_path).await.is_ok()
