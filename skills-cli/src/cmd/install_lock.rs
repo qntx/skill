@@ -8,11 +8,9 @@
 use std::collections::BTreeMap;
 
 use miette::{IntoDiagnostic, Result};
-
 use skill::SkillManager;
 
 use super::add::RunAddOptions;
-
 use crate::ui::{DIM, RESET, TEXT};
 
 /// Run the `experimental_install` command.

@@ -5,15 +5,13 @@ mod install;
 mod output;
 mod select;
 
-pub use select::select_agents;
-
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::Path;
 
 use clap::Args;
 use miette::{IntoDiagnostic, Result, miette};
-
+pub use select::select_agents;
 use skill::SkillManager;
 use skill::types::{AgentId, DiscoverOptions, InstallOptions, InstallScope, Skill, SourceType};
 

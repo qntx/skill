@@ -4,14 +4,12 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use skill::SkillManager;
-use skill::types::{AgentId, InstallMode, InstallScope, Skill};
-
 use skill::telemetry::AuditResponse;
-
-use crate::ui::{self, DIM, GREEN, RESET, YELLOW};
+use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 
 use super::install::SkillInstallOutcome;
 use super::select::kebab_to_title;
+use crate::ui::{self, DIM, GREEN, RESET, YELLOW};
 
 /// Print a pre-confirmation installation summary box.
 ///

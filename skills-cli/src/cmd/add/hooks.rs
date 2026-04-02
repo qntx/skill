@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use miette::{IntoDiagnostic, Result, miette};
-
 use skill::types::{AgentId, InstallScope, Skill, SourceType, WellKnownSkill};
 
 use crate::ui::{self, DIM, RESET, TEXT};

@@ -305,6 +305,7 @@ fn format_summary(labels: &[&str]) -> String {
     format!("{} +{} more", labels[..3].join(", "), labels.len() - 3)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_multiselect_lines(
     state: PromptState,
     message: &str,

@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use miette::{Result, miette};
-
 use skill::SkillManager;
 use skill::types::{
     AgentId, InstallMode, InstallOptions, InstallResult, Skill, SourceType, WellKnownSkill,

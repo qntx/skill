@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use miette::{IntoDiagnostic, Result, miette};
-
 use skill::SkillManager;
 use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 

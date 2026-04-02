@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 
 use clap::Args;
 use miette::{IntoDiagnostic, Result};
-
 use skill::SkillManager;
 use skill::types::{AgentId, InstallScope, ListOptions};
 

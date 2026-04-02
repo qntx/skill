@@ -9,7 +9,6 @@ use std::path::Path;
 
 use clap::Args;
 use miette::{IntoDiagnostic, Result, miette};
-
 use skill::SkillManager;
 use skill::installer::canonical_skills_dir;
 use skill::types::{AgentId, InstallScope, RemoveOptions};

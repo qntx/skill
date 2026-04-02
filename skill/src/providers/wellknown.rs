@@ -2,10 +2,9 @@
 //!
 //! Fetches skills from `/.well-known/skills/index.json` endpoints.
 
+use super::traits::{BoxFuture, HostProvider};
 use crate::error::Result;
 use crate::types::{RemoteSkill, WellKnownIndex, WellKnownSkill, WellKnownSkillEntry};
-
-use super::traits::{BoxFuture, HostProvider};
 
 const WELL_KNOWN_PATH: &str = ".well-known/skills";
 const INDEX_FILE: &str = "index.json";

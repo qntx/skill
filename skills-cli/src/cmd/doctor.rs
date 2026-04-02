@@ -11,7 +11,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use miette::{IntoDiagnostic, Result};
-
 use skill::SkillManager;
 use skill::types::{InstallScope, ListOptions};
 

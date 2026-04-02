@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 
 use clap::Args;
 use miette::{IntoDiagnostic, Result};
-
 use skill::SkillManager;
 use skill::local_lock::{self, LocalSkillLockEntry};
 use skill::skills::discover_skills;

@@ -7,9 +7,8 @@ use std::collections::HashMap;
 
 use miette::Result;
 
-use crate::ui::{DIM, RESET, TEXT};
-
 use super::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
+use crate::ui::{DIM, RESET, TEXT};
 
 /// Run the check command.
 pub async fn run() -> Result<()> {
