@@ -97,6 +97,24 @@ async fn resolve_parent_symlinks(path: &Path) -> PathBuf {
         .map_or(resolved, |real_dir| real_dir.join(base))
 }
 
+/// Check whether an existing symlink already points to the resolved target.
+#[cfg(unix)]
+async fn symlink_already_points_to(link_path: &Path, resolved_target: &Path) -> bool {
+    let Ok(existing) = tokio::fs::read_link(link_path).await else {
+        return false;
+    };
+    let existing_abs = if existing.is_relative() {
+        link_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(&existing)
+    } else {
+        existing
+    };
+    let existing_resolved = std::path::absolute(&existing_abs).unwrap_or(existing_abs);
+    existing_resolved == resolved_target
+}
+
 /// Create a symlink (or junction on Windows). Returns `true` on success.
 ///
 /// Mirrors the Vercel TS `createSymlink` logic:
@@ -130,19 +148,8 @@ pub(super) async fn create_symlink(target: &Path, link_path: &Path) -> bool {
     if let Ok(meta) = tokio::fs::symlink_metadata(link_path).await {
         if meta.is_symlink() {
             #[cfg(unix)]
-            if let Ok(existing) = tokio::fs::read_link(link_path).await {
-                let existing_abs = if existing.is_relative() {
-                    link_path
-                        .parent()
-                        .unwrap_or_else(|| Path::new("."))
-                        .join(&existing)
-                } else {
-                    existing
-                };
-                let existing_resolved = std::path::absolute(&existing_abs).unwrap_or(existing_abs);
-                if existing_resolved == resolved_target {
-                    return true;
-                }
+            if symlink_already_points_to(link_path, &resolved_target).await {
+                return true;
             }
             drop(tokio::fs::remove_file(link_path).await);
         } else {
