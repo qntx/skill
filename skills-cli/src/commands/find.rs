@@ -115,7 +115,12 @@ fn to_fzf_items(skills: &[SearchSkill]) -> Vec<ui::FzfItem> {
 }
 
 /// Run interactive fzf search, returning selected skill info.
-#[allow(clippy::expect_used, clippy::unwrap_in_result)]
+#[allow(
+    clippy::expect_used,
+    clippy::unwrap_in_result,
+    clippy::excessive_nesting,
+    reason = "Mutex::lock only fails if poisoned; nested match arms for parsing"
+)]
 fn run_interactive(
     cache: &Arc<Mutex<HashMap<String, Vec<SearchSkill>>>>,
 ) -> Result<Option<InteractiveResult>> {
@@ -125,27 +130,30 @@ fn run_interactive(
             return Vec::new();
         }
 
-        #[allow(clippy::expect_used)]
-        let mut lock = cache_ref.lock().expect("cache lock");
-        let skills = lock
-            .entry(query.to_owned())
-            .or_insert_with(|| search_api_sync(query));
-        to_fzf_items(skills)
+        #[allow(clippy::expect_used, reason = "Mutex::lock only fails if poisoned")]
+        let items = to_fzf_items(
+            cache_ref
+                .lock()
+                .expect("cache lock")
+                .entry(query.to_owned())
+                .or_insert_with(|| search_api_sync(query)),
+        );
+        items
     })
     .into_diagnostic()?;
 
     match result {
         ui::FzfResult::Selected(value) => {
             // Parse "owner/repo@skillname" back into components
-            #[allow(clippy::option_if_let_else)]
+            #[allow(clippy::option_if_let_else, reason = "if-let-else reads clearer here")]
             if let Some(at_pos) = value.rfind('@') {
                 let pkg = &value[..at_pos];
                 let skill_name = &value[at_pos + 1..];
 
-                // Look up slug from cache (Mutex::lock only fails if poisoned, which is unrecoverable)
-                #[allow(clippy::expect_used)]
-                let lock = cache.lock().expect("cache lock poisoned");
-                let slug = lock
+                #[allow(clippy::expect_used, reason = "Mutex::lock only fails if poisoned")]
+                let slug = cache
+                    .lock()
+                    .expect("cache lock poisoned")
                     .values()
                     .flat_map(|v| v.iter())
                     .find(|s| {
@@ -178,11 +186,11 @@ fn run_interactive(
 
 /// Check if a repo is public via GitHub API (for the final URL display).
 async fn is_repo_public(pkg: &str) -> bool {
-    let parts: Vec<&str> = pkg.split('/').collect();
-    if parts.len() != 2 {
+    let mut parts = pkg.splitn(3, '/');
+    let (Some(owner), Some(repo), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
-    }
-    let url = format!("https://api.github.com/repos/{}/{}", parts[0], parts[1]);
+    };
+    let url = format!("https://api.github.com/repos/{owner}/{repo}");
     let client = reqwest::Client::new();
     client
         .get(&url)

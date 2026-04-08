@@ -33,6 +33,10 @@ pub(crate) struct SyncArgs {
     pub force: bool,
 }
 
+#[allow(
+    clippy::excessive_nesting,
+    reason = "scoped npm packages require extra nesting"
+)]
 async fn scan_node_modules(node_modules: &Path, discover_opts: &DiscoverOptions) -> Vec<Skill> {
     let mut skills = Vec::new();
     let Ok(mut entries) = tokio::fs::read_dir(node_modules).await else {
@@ -127,7 +131,7 @@ fn derive_package_name(skill_path: &Path, node_modules: &Path) -> String {
 struct SyncInstallOk {
     skill: String,
     package_name: String,
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "kept for future display/logging")]
     agent: String,
     canonical_path: Option<PathBuf>,
 }
@@ -139,7 +143,11 @@ struct SyncInstallErr {
 }
 
 /// Run the `experimental_sync` command.
-#[allow(clippy::cognitive_complexity)]
+#[allow(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "multi-phase sync logic with install/uninstall"
+)]
 pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let node_modules = cwd.join("node_modules");
@@ -235,7 +243,7 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
 
         if !confirmed {
             let _ = cliclack::outro_cancel("Sync cancelled");
-            std::process::exit(0);
+            return Ok(());
         }
     }
 
@@ -313,7 +321,9 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
 
         let mut result_lines: Vec<String> = Vec::new();
         for (skill_name, skill_results) in &by_skill {
-            let first = skill_results[0];
+            let Some(first) = skill_results.first() else {
+                continue;
+            };
             let pkg = &first.package_name;
             result_lines.push(format!(
                 "\x1b[32m\u{2713}\x1b[0m {skill_name} {DIM}\u{2190} {pkg}{RESET}"

@@ -14,6 +14,7 @@ use crate::ui::{self, DIM, GREEN, RESET, YELLOW};
 /// Print a pre-confirmation installation summary box.
 ///
 /// Checks each skill×agent for existing installs and shows overwrite warnings.
+#[allow(clippy::excessive_nesting, reason = "skill × agent overwrite checking")]
 pub(super) async fn print_installation_summary(
     skills: &[Skill],
     agents: &[AgentId],
@@ -69,20 +70,20 @@ pub(super) async fn print_installation_summary(
     }
 
     let print_skill_summary =
-        |lines: &mut Vec<String>,
+        |out_lines: &mut Vec<String>,
          skill_list: &[&Skill],
-         overwrites: &std::collections::HashMap<String, Vec<String>>| {
+         ow_map: &std::collections::HashMap<String, Vec<String>>| {
             for s in skill_list {
-                if !lines.is_empty() {
-                    lines.push(String::new());
+                if !out_lines.is_empty() {
+                    out_lines.push(String::new());
                 }
                 let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
                 let short = ui::shorten_path_with_cwd(&canonical, cwd);
-                lines.push(format!("\x1b[36m{short}\x1b[0m"));
-                lines.extend(build_agent_summary_lines(agents, manager, mode));
+                out_lines.push(format!("\x1b[36m{short}\x1b[0m"));
+                out_lines.extend(build_agent_summary_lines(agents, manager, mode));
 
-                if let Some(ow_agents) = overwrites.get(&s.name) {
-                    lines.push(format!(
+                if let Some(ow_agents) = ow_map.get(&s.name) {
+                    out_lines.push(format!(
                         "  {YELLOW}overwrites:{RESET} {}",
                         ui::format_list(ow_agents)
                     ));

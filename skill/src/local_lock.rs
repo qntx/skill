@@ -4,6 +4,7 @@
 //! and is designed to be committed to version control.
 
 use std::collections::BTreeMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -136,7 +137,16 @@ pub async fn compute_skill_folder_hash(skill_dir: &Path) -> Result<String> {
         hasher.update(content);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    let hash = hasher.finalize();
+    let mut hex = String::with_capacity(hash.len() * 2);
+    for byte in hash {
+        #[allow(
+            clippy::let_underscore_must_use,
+            reason = "write! to String is infallible"
+        )]
+        let _ = write!(hex, "{byte:02x}");
+    }
+    Ok(hex)
 }
 
 /// Recursively collect file paths and contents from a directory.
@@ -154,7 +164,10 @@ async fn collect_files(
         .await
         .map_err(|e| SkillError::io(current, e))?
     {
-        let ft = entry.file_type().await.map_err(|e| SkillError::io(current, e))?;
+        let ft = entry
+            .file_type()
+            .await
+            .map_err(|e| SkillError::io(current, e))?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 

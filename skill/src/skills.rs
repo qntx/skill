@@ -184,7 +184,10 @@ pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
 /// # Errors
 ///
 /// Returns an error if the `subpath` escapes the `base_path`.
-#[allow(clippy::cognitive_complexity, reason = "multi-strategy discovery with fallback logic")]
+#[allow(
+    clippy::cognitive_complexity,
+    reason = "multi-strategy discovery with fallback logic"
+)]
 pub async fn discover_skills(
     base_path: &Path,
     subpath: Option<&str>,

@@ -18,11 +18,11 @@ pub(crate) async fn run() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     println!("{TEXT}Current version: {current}{RESET}");
 
-    let spinner = cliclack::spinner();
-    spinner.start("Checking for updates...");
+    let check_spinner = cliclack::spinner();
+    check_spinner.start("Checking for updates...");
 
     let release = fetch_latest_release().await?;
-    spinner.stop("Check complete");
+    check_spinner.stop("Check complete");
 
     let latest = release
         .tag_name
@@ -59,18 +59,18 @@ pub(crate) async fn run() -> Result<()> {
             miette!("No binary found for this platform ({asset_name}) in release {latest}")
         })?;
 
-    let spinner = cliclack::spinner();
-    spinner.start(format!("Downloading {asset_name}..."));
+    let download_spinner = cliclack::spinner();
+    download_spinner.start(format!("Downloading {asset_name}..."));
 
     let archive_data = download_asset(&asset_url).await?;
-    spinner.stop("Download complete");
+    download_spinner.stop("Download complete");
 
-    let spinner = cliclack::spinner();
-    spinner.start("Extracting and installing...");
+    let install_spinner = cliclack::spinner();
+    install_spinner.start("Extracting and installing...");
 
     let binary_data = extract_binary_from_archive(&archive_data, &asset_name)?;
     replace_current_binary(&binary_data)?;
-    spinner.stop("Installation complete");
+    install_spinner.stop("Installation complete");
 
     let _ = cliclack::outro(format!(
         "{GREEN}Upgraded to {latest}!{RESET} {DIM}Restart your shell for changes to take effect.{RESET}"

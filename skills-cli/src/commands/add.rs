@@ -19,6 +19,10 @@ use crate::ui::{self, DIM, GREEN, RESET, TEXT, YELLOW};
 
 /// Arguments for the `add` command.
 #[derive(Args)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags are naturally boolean"
+)]
 pub(crate) struct AddArgs {
     /// Source(s) to install from (e.g. `owner/repo`, URL, local path).
     pub source: Vec<String>,
@@ -62,11 +66,17 @@ pub(crate) struct AddArgs {
 
 /// Options for `run_add` when called programmatically.
 pub(crate) struct RunAddOptions {
+    /// Source to install from.
     pub source: String,
+    /// Install globally.
     pub global: Option<bool>,
+    /// Skip confirmation.
     pub yes: bool,
+    /// Filter to specific skills.
     pub skill_filter: Option<Vec<String>>,
+    /// Target agents.
     pub agent: Option<Vec<String>>,
+    /// Dry run mode.
     pub dry_run: bool,
 }
 
@@ -123,6 +133,11 @@ pub(crate) async fn run(mut args: AddArgs) -> Result<()> {
     Ok(())
 }
 
+#[allow(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "sequential install pipeline with multiple stages"
+)]
 async fn run_single_source(
     source: &str,
     args: &mut AddArgs,
@@ -165,22 +180,22 @@ async fn run_single_source(
     }
 
     // Clone/resolve source
-    let spinner = cliclack::spinner();
+    let clone_spinner = cliclack::spinner();
     if parsed.source_type == SourceType::Local {
-        spinner.start("Validating local path...");
+        clone_spinner.start("Validating local path...");
     } else {
-        spinner.start("Cloning repository...");
+        clone_spinner.start("Cloning repository...");
     }
     let (skills_dir, _temp_dir) = install::resolve_source(&parsed).await?;
     if parsed.source_type == SourceType::Local {
-        spinner.stop("Local path validated");
+        clone_spinner.stop("Local path validated");
     } else {
-        spinner.stop("Repository cloned");
+        clone_spinner.stop("Repository cloned");
     }
 
     // Discover skills
-    let spinner = cliclack::spinner();
-    spinner.start("Discovering skills...");
+    let discover_spinner = cliclack::spinner();
+    discover_spinner.start("Discovering skills...");
     let include_internal = args.skill.as_ref().is_some_and(|s| !s.is_empty());
     let discover_opts = DiscoverOptions {
         include_internal,
@@ -192,13 +207,13 @@ async fn run_single_source(
             .map_err(|e| miette!("{e}"))?;
 
     if skills.is_empty() {
-        spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
+        discover_spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
         let _ = cliclack::outro(
             "\x1b[31mNo valid skills found. Skills require a SKILL.md with name and description.\x1b[0m",
         );
         return Ok(None);
     }
-    spinner.stop(format!(
+    discover_spinner.stop(format!(
         "Found {GREEN}{}{RESET} skill{}",
         skills.len(),
         if skills.len() > 1 { "s" } else { "" }
@@ -233,9 +248,9 @@ async fn run_single_source(
     // Await and display security audit results (started earlier in parallel)
     if let Some(handle) = audit_handle
         && let Ok(Some(audit_data)) = handle.await
-        && let Some(ref source) = owner_repo_for_audit
+        && let Some(ref audit_source) = owner_repo_for_audit
     {
-        output::print_security_audit(&audit_data, &selected_skills, source);
+        output::print_security_audit(&audit_data, &selected_skills, audit_source);
     }
 
     if args.dry_run {
@@ -264,11 +279,11 @@ async fn run_single_source(
         cwd: Some(cwd.to_path_buf()),
     };
 
-    let spinner = cliclack::spinner();
-    spinner.start("Installing skills...");
+    let install_spinner = cliclack::spinner();
+    install_spinner.start("Installing skills...");
     let outcomes =
         install::do_install(manager, &selected_skills, &target_agents, &install_opts).await;
-    spinner.stop("Installation complete");
+    install_spinner.stop("Installation complete");
 
     println!();
     output::print_install_results(&outcomes, cwd);
@@ -297,8 +312,8 @@ async fn handle_wellknown_source(
 ) -> Result<Option<Vec<AgentId>>> {
     use skill::providers::WellKnownProvider;
 
-    let spinner = cliclack::spinner();
-    spinner.start("Discovering skills from well-known endpoint...");
+    let discover_spinner = cliclack::spinner();
+    discover_spinner.start("Discovering skills from well-known endpoint...");
 
     let provider = WellKnownProvider;
     let wk_skills = provider
@@ -307,14 +322,14 @@ async fn handle_wellknown_source(
         .map_err(|e| miette!("{e}"))?;
 
     if wk_skills.is_empty() {
-        spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
+        discover_spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
         let _ = cliclack::outro(
             "\x1b[31mNo skills found at this URL. Make sure the server has a /.well-known/skills/index.json file.\x1b[0m",
         );
         return Ok(None);
     }
 
-    spinner.stop(format!(
+    discover_spinner.stop(format!(
         "Found {GREEN}{}{RESET} skill{}",
         wk_skills.len(),
         if wk_skills.len() > 1 { "s" } else { "" }
@@ -342,11 +357,11 @@ async fn handle_wellknown_source(
         cwd: Some(cwd.to_path_buf()),
     };
 
-    let spinner = cliclack::spinner();
-    spinner.start("Installing skills...");
+    let install_spinner = cliclack::spinner();
+    install_spinner.start("Installing skills...");
     let outcomes =
         install::install_wellknown_skills(&wk_skills, &target_agents, manager, &install_opts).await;
-    spinner.stop("Installation complete");
+    install_spinner.stop("Installation complete");
 
     println!();
     output::print_install_results(&outcomes, cwd);

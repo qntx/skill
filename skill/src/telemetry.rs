@@ -77,7 +77,7 @@ pub fn track<S: ::std::hash::BuildHasher>(event: &str, properties: HashMap<Strin
             .timeout(std::time::Duration::from_secs(5))
             .build();
         if let Ok(client) = client {
-            let _ = client.get(&url).send().await;
+            drop(client.get(&url).send().await);
         }
     });
 }

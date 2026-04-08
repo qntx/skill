@@ -27,7 +27,10 @@ pub(crate) fn run(args: &InitArgs) -> Result<()> {
     let skill_name = args.name.as_deref().unwrap_or(&cwd_name);
     let has_name = args.name.is_some();
 
-    #[allow(clippy::redundant_clone)]
+    #[allow(
+        clippy::redundant_clone,
+        reason = "clone needed when name is provided for directory join"
+    )]
     let skill_dir = if has_name {
         cwd.join(skill_name)
     } else {

@@ -30,6 +30,10 @@ pub(crate) struct ListArgs {
 }
 
 /// Run the list command.
+#[allow(
+    clippy::too_many_lines,
+    reason = "tabular output formatting with multiple columns"
+)]
 pub(crate) async fn run(args: ListArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;

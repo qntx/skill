@@ -30,7 +30,10 @@ static SOURCE_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
 /// - Prefix shorthands (`github:owner/repo`, `gitlab:owner/repo`)
 /// - Direct git URLs (fallback)
 #[must_use]
-#[allow(clippy::too_many_lines, reason = "sequential match arms for different source formats")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "sequential match arms for different source formats"
+)]
 pub fn parse_source(input: &str) -> ParsedSource {
     let mut input = input.to_owned();
 
@@ -328,7 +331,10 @@ fn is_well_known_url(input: &str) -> bool {
 // Compiled regex patterns (cached via LazyLock)
 
 /// Regex for GitHub tree URLs with subpath.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn github_tree_with_path_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").expect("valid regex")
@@ -337,7 +343,10 @@ fn github_tree_with_path_re() -> &'static Regex {
 }
 
 /// Regex for GitHub tree URLs without subpath.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn github_tree_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").expect("valid regex")
@@ -346,7 +355,10 @@ fn github_tree_re() -> &'static Regex {
 }
 
 /// Regex for GitHub repository URLs.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn github_repo_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"github\.com/([^/]+)/([^/]+)").expect("valid regex"));
@@ -354,7 +366,10 @@ fn github_repo_re() -> &'static Regex {
 }
 
 /// Regex for GitLab tree URLs with subpath.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn gitlab_tree_with_path_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)/(.+)").expect("valid regex")
@@ -363,7 +378,10 @@ fn gitlab_tree_with_path_re() -> &'static Regex {
 }
 
 /// Regex for GitLab tree URLs without subpath.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn gitlab_tree_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)$").expect("valid regex")
@@ -372,7 +390,10 @@ fn gitlab_tree_re() -> &'static Regex {
 }
 
 /// Regex for GitLab repository URLs.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn gitlab_repo_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("valid regex"));
@@ -380,7 +401,10 @@ fn gitlab_repo_re() -> &'static Regex {
 }
 
 /// Regex for `owner/repo@ref` shorthand.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn at_skill_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("valid regex"));
@@ -388,7 +412,10 @@ fn at_skill_re() -> &'static Regex {
 }
 
 /// Regex for `owner/repo[/subpath]` shorthand.
-#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
+#[allow(
+    clippy::expect_used,
+    reason = "static regex patterns are known valid at compile time"
+)]
 fn shorthand_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("valid regex"));

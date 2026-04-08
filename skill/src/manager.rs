@@ -218,7 +218,10 @@ impl SkillManager {
     /// # Errors
     ///
     /// Returns an error on I/O failure.
-    #[allow(clippy::excessive_nesting, reason = "skill × agent × path cleanup iteration")]
+    #[allow(
+        clippy::excessive_nesting,
+        reason = "skill × agent × path cleanup iteration"
+    )]
     pub async fn remove_skills(
         &self,
         skill_names: &[String],

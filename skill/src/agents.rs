@@ -70,7 +70,10 @@ impl AgentRegistry {
     }
 
     /// Detect which agents are installed by checking for their known paths.
-    #[allow(clippy::excessive_nesting, reason = "async block reduces nesting but still triggers lint")]
+    #[allow(
+        clippy::excessive_nesting,
+        reason = "async block reduces nesting but still triggers lint"
+    )]
     pub async fn detect_installed(&self) -> Vec<AgentId> {
         let mut installed = Vec::new();
         for (id, config) in &self.agents {
@@ -173,7 +176,10 @@ fn xdg_config_home() -> PathBuf {
 }
 
 /// Register all built-in agents matching the `TypeScript` reference.
-#[allow(clippy::too_many_lines, reason = "declarative agent definitions, splitting would reduce clarity")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "declarative agent definitions, splitting would reduce clarity"
+)]
 fn register_builtin_agents(reg: &mut AgentRegistry) {
     let h = home();
     let cfg = xdg_config_home();

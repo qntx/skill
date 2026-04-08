@@ -104,6 +104,10 @@ pub(crate) async fn run() -> Result<()> {
 }
 
 /// Check for broken symlinks in all agent skill directories.
+#[allow(
+    clippy::excessive_nesting,
+    reason = "dir × entry × symlink check iteration"
+)]
 async fn check_broken_symlinks(manager: &SkillManager, cwd: &Path, findings: &mut Vec<Finding>) {
     let mut broken_count = 0u32;
 

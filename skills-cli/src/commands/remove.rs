@@ -42,6 +42,7 @@ pub(crate) struct RemoveArgs {
     pub all: bool,
 }
 
+#[allow(clippy::excessive_nesting, reason = "scope × agent × entry iteration")]
 async fn scan_installed_skills(
     manager: &SkillManager,
     scope: InstallScope,
@@ -111,7 +112,11 @@ fn validate_agents(manager: &SkillManager, agent_names: &[String]) -> Result<Vec
 }
 
 /// Run the remove command.
-#[allow(clippy::cognitive_complexity)]
+#[allow(
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "interactive removal flow with multiple branches"
+)]
 pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let scope = if args.global {
@@ -150,7 +155,11 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
         return Ok(());
     }
 
-    #[allow(clippy::option_if_let_else, clippy::single_match_else)]
+    #[allow(
+        clippy::option_if_let_else,
+        clippy::single_match_else,
+        reason = "sequential conditions read clearer than match"
+    )]
     let selected: Vec<String> = if args.all {
         installed.clone()
     } else if !args.skills.is_empty() {
@@ -178,7 +187,7 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
             Ok(sel) => sel,
             Err(_) => {
                 let _ = cliclack::outro_cancel("Removal cancelled");
-                std::process::exit(0);
+                return Ok(());
             }
         }
     };
@@ -207,7 +216,7 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
 
         if !confirmed {
             let _ = cliclack::outro_cancel("Removal cancelled");
-            std::process::exit(0);
+            return Ok(());
         }
     }
 

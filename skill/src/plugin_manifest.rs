@@ -65,7 +65,10 @@ fn is_valid_relative_path(path: &str) -> bool {
 ///
 /// Returns directories that CONTAIN skills (to be searched for child
 /// `SKILL.md` files).
-#[allow(clippy::excessive_nesting, reason = "manifest × plugin × skill path iteration")]
+#[allow(
+    clippy::excessive_nesting,
+    reason = "manifest × plugin × skill path iteration"
+)]
 pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
     let mut search_dirs = Vec::new();
 
@@ -142,7 +145,10 @@ pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
 /// This allows grouping skills by their parent plugin.
 ///
 /// Returns `HashMap<AbsolutePath, PluginName>`.
-#[allow(clippy::excessive_nesting, reason = "manifest × plugin × skill path iteration")]
+#[allow(
+    clippy::excessive_nesting,
+    reason = "manifest × plugin × skill path iteration"
+)]
 pub async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
     let mut groupings = HashMap::new();
 

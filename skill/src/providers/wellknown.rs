@@ -227,9 +227,7 @@ impl WellKnownProvider {
         };
 
         if let [single] = index.skills.as_slice() {
-            return self
-                .fetch_skill_by_entry(&resolved_base, single)
-                .await;
+            return self.fetch_skill_by_entry(&resolved_base, single).await;
         }
 
         Ok(None)

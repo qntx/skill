@@ -115,7 +115,10 @@ pub async fn read_skill_lock() -> Result<SkillLockFile> {
 pub async fn write_skill_lock(lock: &SkillLockFile) -> Result<()> {
     let path = lock_file_path();
     let Some(parent) = path.parent() else {
-        return Err(SkillError::io(&path, std::io::Error::other("lock file path has no parent")));
+        return Err(SkillError::io(
+            &path,
+            std::io::Error::other("lock file path has no parent"),
+        ));
     };
     tokio::fs::create_dir_all(parent)
         .await
@@ -295,7 +298,10 @@ pub fn get_github_token() -> Option<String> {
 ///
 /// Returns an error on network failure.
 #[cfg(feature = "network")]
-#[allow(clippy::excessive_nesting, reason = "nested branch × tree entry iteration")]
+#[allow(
+    clippy::excessive_nesting,
+    reason = "nested branch × tree entry iteration"
+)]
 pub async fn fetch_skill_folder_hash(
     owner_repo: &str,
     skill_path: &str,
@@ -409,7 +415,10 @@ fn iso_now() -> String {
 
     // Civil date from day count (algorithm: Howard Hinnant's `civil_from_days`).
     // All arithmetic stays in i64 to avoid wrapping casts.
-    #[allow(clippy::cast_possible_wrap, reason = "u64 days fits in i64 for valid timestamps")]
+    #[allow(
+        clippy::cast_possible_wrap,
+        reason = "u64 days fits in i64 for valid timestamps"
+    )]
     let z = (days as i64) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);

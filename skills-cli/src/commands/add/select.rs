@@ -68,8 +68,7 @@ pub(super) fn select_skills(
         return Ok(filtered);
     }
 
-    if skills.len() == 1 {
-        let s = &skills[0];
+    if let [s] = skills {
         let _ = cliclack::log::info(format!("Skill: \x1b[36m{}\x1b[0m", s.name));
         let _ = cliclack::log::remark(format!("{DIM}{}{RESET}", s.description));
         return Ok(skills.to_vec());
@@ -161,6 +160,7 @@ pub(super) fn select_skills(
 ///
 /// Matches the TS: universal agents in a locked section, detected agents
 /// pre-selected, search filtering, last-selection memory.
+#[allow(clippy::too_many_lines, reason = "multi-branch agent selection flow")]
 pub(crate) async fn select_agents(
     manager: &SkillManager,
     agent_arg: Option<&Vec<String>>,
@@ -253,7 +253,7 @@ pub(crate) async fn select_agents(
             }
             ui::SearchMultiselectResult::Cancelled => {
                 let _ = cliclack::outro_cancel("Installation cancelled");
-                std::process::exit(0);
+                return Err(miette!("Installation cancelled"));
             }
         };
     }
@@ -332,7 +332,7 @@ pub(crate) async fn select_agents(
         }
         ui::SearchMultiselectResult::Cancelled => {
             let _ = cliclack::outro_cancel("Installation cancelled");
-            std::process::exit(0);
+            Err(miette!("Installation cancelled"))
         }
     }
 }

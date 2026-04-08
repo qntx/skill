@@ -8,6 +8,7 @@ use skill::types::{AgentId, InstallScope, Skill, SourceType, WellKnownSkill};
 
 use crate::ui::{self, DIM, RESET, TEXT};
 
+/// Send install telemetry for git-based sources.
 pub(super) fn send_telemetry(
     parsed: &skill::types::ParsedSource,
     selected_skills: &[Skill],
@@ -61,6 +62,7 @@ pub(super) fn send_telemetry(
     skill::telemetry::track("install", props);
 }
 
+/// Send install telemetry for well-known sources.
 pub(super) fn send_wellknown_telemetry(
     wk_skills: &[WellKnownSkill],
     target_agents: &[AgentId],
@@ -157,14 +159,14 @@ pub(super) async fn prompt_for_find_skills(
         )
         .await
     {
-        let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
+        drop(skill::lock::dismiss_prompt("findSkillsPrompt").await);
         return;
     }
 
     println!();
-    let _ = cliclack::log::remark(format!(
+    drop(cliclack::log::remark(format!(
         "{DIM}One-time prompt - you won't be asked again if you dismiss.{RESET}"
-    ));
+    )));
     ui::drain_input_events();
     let Ok(yes) = cliclack::confirm(
         "Install the \x1b[36mfind-skills\x1b[0m skill? It helps your agent discover and suggest skills."
@@ -172,12 +174,12 @@ pub(super) async fn prompt_for_find_skills(
         .initial_value(true)
         .interact()
     else {
-        let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
+        drop(skill::lock::dismiss_prompt("findSkillsPrompt").await);
         return;
     };
 
+    drop(skill::lock::dismiss_prompt("findSkillsPrompt").await);
     if yes {
-        let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
         let agents: Vec<String> = target_agents
             .iter()
             .filter(|id| id.as_str() != "replit")
@@ -187,7 +189,7 @@ pub(super) async fn prompt_for_find_skills(
             return;
         }
         println!();
-        let _ = cliclack::log::step("Installing find-skills skill...");
+        drop(cliclack::log::step("Installing find-skills skill..."));
         let add_args = super::AddArgs {
             source: vec!["vercel-labs/skills".to_owned()],
             global: Some(true),
@@ -200,12 +202,11 @@ pub(super) async fn prompt_for_find_skills(
             full_depth: false,
             dry_run: false,
         };
-        let _ = Box::pin(super::run(add_args)).await;
+        drop(Box::pin(super::run(add_args)).await);
     } else {
-        let _ = skill::lock::dismiss_prompt("findSkillsPrompt").await;
-        let _ = cliclack::log::remark(format!(
+        drop(cliclack::log::remark(format!(
             "{DIM}You can install it later with: skills add vercel-labs/skills@find-skills{RESET}"
-        ));
+        )));
     }
 }
 
@@ -229,16 +230,18 @@ pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills
         .unwrap_or(None)
         .unwrap_or_default();
 
-        let _ = skill::lock::add_skill_to_lock(
-            &s.name,
-            &owner_repo,
-            &parsed.source_type.to_string(),
-            &parsed.url,
-            skill_path.as_deref(),
-            &hash,
-            s.plugin_name.as_deref(),
-        )
-        .await;
+        drop(
+            skill::lock::add_skill_to_lock(
+                &s.name,
+                &owner_repo,
+                &parsed.source_type.to_string(),
+                &parsed.url,
+                skill_path.as_deref(),
+                &hash,
+                s.plugin_name.as_deref(),
+            )
+            .await,
+        );
     }
 }
 
@@ -255,15 +258,17 @@ pub(super) async fn update_local_lock_file(
             .await
             .unwrap_or_default();
 
-        let _ = skill::local_lock::add_skill_to_local_lock(
-            &s.name,
-            skill::local_lock::LocalSkillLockEntry {
-                source: source.clone(),
-                source_type: parsed.source_type.to_string(),
-                computed_hash: hash,
-            },
-            cwd,
-        )
-        .await;
+        drop(
+            skill::local_lock::add_skill_to_local_lock(
+                &s.name,
+                skill::local_lock::LocalSkillLockEntry {
+                    source: source.clone(),
+                    source_type: parsed.source_type.to_string(),
+                    computed_hash: hash,
+                },
+                cwd,
+            )
+            .await,
+        );
     }
 }

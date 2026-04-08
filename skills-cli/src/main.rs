@@ -2,7 +2,19 @@
 //!
 //! Feature-equivalent Rust port of the Vercel `TypeScript` `skills` CLI.
 
-#![allow(clippy::print_stdout, clippy::print_stderr)]
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "CLI binary uses stdout/stderr for user output"
+)]
+#![allow(
+    clippy::let_underscore_must_use,
+    reason = "cliclack log/note/outro calls return Result for IO which we intentionally ignore in CLI output"
+)]
+#![allow(
+    clippy::missing_docs_in_private_items,
+    reason = "CLI commands are self-documenting via clap attributes"
+)]
 
 mod commands;
 mod ui;

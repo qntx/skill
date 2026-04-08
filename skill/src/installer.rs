@@ -267,7 +267,10 @@ pub async fn install_remote_skill_content(
 /// # Errors
 ///
 /// Returns an error on I/O failure.
-#[allow(clippy::excessive_nesting, reason = "closure with async file operations")]
+#[allow(
+    clippy::excessive_nesting,
+    reason = "closure with async file operations"
+)]
 pub async fn install_wellknown_skill_files<S: ::std::hash::BuildHasher + Clone + Send + Sync>(
     install_name: &str,
     files: &std::collections::HashMap<String, String, S>,
@@ -373,7 +376,10 @@ pub async fn install_wellknown_skill_files<S: ::std::hash::BuildHasher + Clone +
 /// # Errors
 ///
 /// Returns an error on I/O or parse failure.
-#[allow(clippy::excessive_nesting, reason = "nested scope × agent × dir iteration")]
+#[allow(
+    clippy::excessive_nesting,
+    reason = "nested scope × agent × dir iteration"
+)]
 pub async fn list_installed_skills(
     registry: &AgentRegistry,
     options: &ListOptions,
@@ -610,11 +616,18 @@ async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
         .await
         .map_err(|e| SkillError::io(src, e))?;
 
-    while let Some(entry) = entries.next_entry().await.map_err(|e| SkillError::io(src, e))? {
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| SkillError::io(src, e))?
+    {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 
-        let ft = entry.file_type().await.map_err(|e| SkillError::io(src, e))?;
+        let ft = entry
+            .file_type()
+            .await
+            .map_err(|e| SkillError::io(src, e))?;
 
         if ft.is_dir() {
             if EXCLUDE_DIRS.contains(&name_str.as_ref()) || name_str.starts_with('_') {

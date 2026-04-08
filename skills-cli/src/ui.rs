@@ -68,7 +68,8 @@ impl PromptState {
 pub(crate) fn show_logo() {
     println!();
     for (i, line) in LOGO_LINES.iter().enumerate() {
-        let gray = GRAYS.get(i).unwrap_or(&GRAYS[0]);
+        let first = GRAYS.first().unwrap_or(&"");
+        let gray = GRAYS.get(i).unwrap_or(first);
         println!("{gray}{line}{RESET}");
     }
 }
@@ -135,7 +136,7 @@ pub(crate) fn drain_input_events() {
 /// Shorten a path for display by replacing the home directory with `~`
 /// and the current directory with `.`.
 #[must_use]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "utility available for future use")]
 pub(crate) fn shorten_path(path: &std::path::Path) -> String {
     shorten_path_with_cwd(path, &std::env::current_dir().unwrap_or_default())
 }
@@ -180,8 +181,8 @@ pub(crate) fn format_list_max(items: &[String], max_show: usize) -> String {
     if items.len() <= max_show {
         return items.join(", ");
     }
-    let shown = &items[..max_show];
-    let remaining = items.len() - max_show;
+    let shown = items.get(..max_show).unwrap_or(items);
+    let remaining = items.len().saturating_sub(max_show);
     format!("{} +{remaining} more", shown.join(", "))
 }
 
@@ -302,10 +303,20 @@ fn format_summary(labels: &[&str]) -> String {
     if labels.len() <= 3 {
         return labels.join(", ");
     }
-    format!("{} +{} more", labels[..3].join(", "), labels.len() - 3)
+    let shown = labels.get(..3).unwrap_or(labels);
+    format!(
+        "{} +{} more",
+        shown.join(", "),
+        labels.len().saturating_sub(3)
+    )
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::excessive_nesting,
+    clippy::indexing_slicing,
+    reason = "render function needs all display state; indices are pre-filtered"
+)]
 fn build_multiselect_lines(
     state: PromptState,
     message: &str,
@@ -450,7 +461,16 @@ impl Drop for RawModeGuard {
 /// # Errors
 ///
 /// Returns an error if terminal raw mode or I/O operations fail.
-pub(crate) fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchMultiselectResult> {
+#[allow(
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    clippy::indexing_slicing,
+    clippy::shadow_unrelated,
+    reason = "TUI event loop; closure params intentionally shadow outer state"
+)]
+pub(crate) fn search_multiselect(
+    opts: &SearchMultiselectOptions,
+) -> io::Result<SearchMultiselectResult> {
     let mut stdout = io::stdout();
     let mut query = String::new();
     let mut cursor: usize = 0;
@@ -614,6 +634,10 @@ pub(crate) enum FzfResult {
     Cancelled,
 }
 
+#[allow(
+    clippy::excessive_nesting,
+    reason = "TUI render logic with inline formatting"
+)]
 fn build_fzf_lines(
     state: PromptState,
     message: &str,
@@ -697,6 +721,12 @@ const fn debounce_delay(query_len: usize) -> u64 {
     }
 }
 
+#[allow(
+    clippy::excessive_nesting,
+    clippy::too_many_lines,
+    clippy::shadow_unrelated,
+    reason = "TUI event loop; closure params intentionally shadow outer state"
+)]
 pub(crate) fn fzf_search<F>(message: &str, search_fn: F) -> io::Result<FzfResult>
 where
     F: Fn(&str) -> Vec<FzfItem>,
@@ -742,7 +772,10 @@ where
 
     loop {
         let poll_timeout = if pending_search {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "debounce millis fits in u64"
+            )]
             let elapsed = last_input.elapsed().as_millis() as u64;
             let delay = debounce_delay(query.len());
             if elapsed >= delay {
