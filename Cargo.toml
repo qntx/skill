@@ -14,7 +14,7 @@ description = "Blazing-fast Vercel Skills CLI, reborn in Rust. 100% command pari
 skill = { version = "0.6", path = "skill", features = ["network", "telemetry"] }
 
 # Async runtime
-tokio = { version = "1.50.0", default-features = false }
+tokio = { version = "1.51.0", default-features = false }
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
