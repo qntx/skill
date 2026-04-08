@@ -58,99 +58,53 @@ fn is_valid_relative_path(path: &str) -> bool {
     path.starts_with("./")
 }
 
-/// Extract skill search directories from plugin manifests.
-///
-/// Handles both `marketplace.json` (multi-plugin) and `plugin.json` (single
-/// plugin). Only resolves local paths — remote sources are skipped.
-///
-/// Returns directories that CONTAIN skills (to be searched for child
-/// `SKILL.md` files).
-#[allow(
-    clippy::excessive_nesting,
-    reason = "manifest × plugin × skill path iteration"
-)]
-pub(crate) async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
-    let mut search_dirs = Vec::new();
-
-    let add_plugin_skill_paths =
-        |plugin_base: &Path, skills: Option<&Vec<String>>, dirs: &mut Vec<PathBuf>| {
-            if !is_contained_in(plugin_base, base_path) {
-                return;
-            }
-
-            if let Some(skill_list) = skills {
-                for skill_path in skill_list {
-                    if !is_valid_relative_path(skill_path) {
-                        continue;
-                    }
-                    let skill_dir = plugin_base.join(skill_path);
-                    let skill_parent = skill_dir.parent().unwrap_or(&skill_dir).to_path_buf();
-                    if is_contained_in(&skill_parent, base_path) {
-                        dirs.push(skill_parent);
-                    }
-                }
-            }
-            // Always add conventional skills/ directory for discovery.
-            dirs.push(plugin_base.join("skills"));
-        };
-
-    // Try marketplace.json (multi-plugin catalog).
-    if let Ok(content) =
-        tokio::fs::read_to_string(base_path.join(".claude-plugin/marketplace.json")).await
-        && let Ok(manifest) = serde_json::from_str::<MarketplaceManifest>(&content)
-    {
-        let plugin_root = manifest
-            .metadata
-            .as_ref()
-            .and_then(|m| m.plugin_root.as_deref());
-
-        let valid_plugin_root = plugin_root.is_none_or(is_valid_relative_path);
-
-        if valid_plugin_root {
-            for plugin in manifest.plugins.iter().flatten() {
-                // Skip remote sources (object with source/repo) — only handle local
-                // string paths.
-                let source_str = match &plugin.source {
-                    Some(serde_json::Value::String(s)) => {
-                        if !is_valid_relative_path(s) {
-                            continue;
-                        }
-                        Some(s.as_str())
-                    }
-                    None => None,
-                    _ => continue, // object or other non-string → remote, skip
-                };
-
-                let plugin_base = base_path
-                    .join(plugin_root.unwrap_or(""))
-                    .join(source_str.unwrap_or(""));
-                add_plugin_skill_paths(&plugin_base, plugin.skills.as_ref(), &mut search_dirs);
-            }
-        }
-    }
-
-    // Try plugin.json (single plugin at root).
-    if let Ok(content) =
-        tokio::fs::read_to_string(base_path.join(".claude-plugin/plugin.json")).await
-        && let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content)
-    {
-        add_plugin_skill_paths(base_path, manifest.skills.as_ref(), &mut search_dirs);
-    }
-
-    search_dirs
+/// Combined result from plugin manifest parsing.
+struct PluginManifestData {
+    /// Directories to search for skill subdirectories.
+    search_dirs: Vec<PathBuf>,
+    /// Mapping from normalized skill directory path to plugin name.
+    groupings: HashMap<PathBuf, String>,
 }
 
-/// Get a map of skill directory paths to plugin names from plugin manifests.
-///
-/// This allows grouping skills by their parent plugin.
-///
-/// Returns `HashMap<AbsolutePath, PluginName>`.
+/// Parse plugin manifests once and extract both search directories and groupings.
 #[allow(
     clippy::excessive_nesting,
     reason = "manifest × plugin × skill path iteration"
 )]
-pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
-    let mut groupings = HashMap::new();
+async fn parse_plugin_manifests(base_path: &Path) -> PluginManifestData {
+    let mut data = PluginManifestData {
+        search_dirs: Vec::new(),
+        groupings: HashMap::new(),
+    };
+
+    let process_plugin = |plugin_base: &Path,
+                          skills: Option<&Vec<String>>,
+                          plugin_name: Option<&str>,
+                          out: &mut PluginManifestData| {
+        if !is_contained_in(plugin_base, base_path) {
+            return;
+        }
+
+        if let Some(skill_list) = skills {
+            for skill_path in skill_list {
+                if !is_valid_relative_path(skill_path) {
+                    continue;
+                }
+                let skill_dir = plugin_base.join(skill_path);
+                let skill_parent = skill_dir.parent().unwrap_or(&skill_dir).to_path_buf();
+                if is_contained_in(&skill_parent, base_path) {
+                    out.search_dirs.push(skill_parent);
+                }
+                if let Some(name) = plugin_name
+                    && is_contained_in(&skill_dir, base_path)
+                {
+                    let resolved = crate::path_util::normalize_absolute(&skill_dir);
+                    out.groupings.insert(resolved, name.to_owned());
+                }
+            }
+        }
+        out.search_dirs.push(plugin_base.join("skills"));
+    };
 
     // Try marketplace.json (multi-plugin catalog).
     if let Ok(content) =
@@ -166,10 +120,6 @@ pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, S
 
         if valid_plugin_root {
             for plugin in manifest.plugins.iter().flatten() {
-                let Some(ref plugin_name) = plugin.name else {
-                    continue;
-                };
-
                 let source_str = match &plugin.source {
                     Some(serde_json::Value::String(s)) => {
                         if !is_valid_relative_path(s) {
@@ -184,23 +134,12 @@ pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, S
                 let plugin_base = base_path
                     .join(plugin_root.unwrap_or(""))
                     .join(source_str.unwrap_or(""));
-
-                if !is_contained_in(&plugin_base, base_path) {
-                    continue;
-                }
-
-                if let Some(skill_list) = &plugin.skills {
-                    for skill_path in skill_list {
-                        if !is_valid_relative_path(skill_path) {
-                            continue;
-                        }
-                        let skill_dir = plugin_base.join(skill_path);
-                        if is_contained_in(&skill_dir, base_path) {
-                            let resolved = crate::path_util::normalize_absolute(&skill_dir);
-                            groupings.insert(resolved, plugin_name.clone());
-                        }
-                    }
-                }
+                process_plugin(
+                    &plugin_base,
+                    plugin.skills.as_ref(),
+                    plugin.name.as_deref(),
+                    &mut data,
+                );
             }
         }
     }
@@ -209,20 +148,24 @@ pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, S
     if let Ok(content) =
         tokio::fs::read_to_string(base_path.join(".claude-plugin/plugin.json")).await
         && let Ok(manifest) = serde_json::from_str::<PluginManifest>(&content)
-        && let Some(ref plugin_name) = manifest.name
-        && let Some(ref skill_list) = manifest.skills
     {
-        for skill_path in skill_list {
-            if !is_valid_relative_path(skill_path) {
-                continue;
-            }
-            let skill_dir = base_path.join(skill_path);
-            if is_contained_in(&skill_dir, base_path) {
-                let resolved = crate::path_util::normalize_absolute(&skill_dir);
-                groupings.insert(resolved, plugin_name.clone());
-            }
-        }
+        process_plugin(
+            base_path,
+            manifest.skills.as_ref(),
+            manifest.name.as_deref(),
+            &mut data,
+        );
     }
 
-    groupings
+    data
+}
+
+/// Extract skill search directories from plugin manifests.
+pub(crate) async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
+    parse_plugin_manifests(base_path).await.search_dirs
+}
+
+/// Get a map of skill directory paths to plugin names from plugin manifests.
+pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
+    parse_plugin_manifests(base_path).await.groupings
 }

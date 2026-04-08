@@ -111,11 +111,11 @@ impl SkillManager {
 
     /// Get the effective working directory.
     #[must_use]
-    pub fn cwd(&self) -> PathBuf {
-        self.config
-            .cwd
-            .clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+    pub fn cwd(&self) -> std::borrow::Cow<'_, Path> {
+        self.config.cwd.as_deref().map_or_else(
+            || std::borrow::Cow::Owned(std::env::current_dir().unwrap_or_default()),
+            std::borrow::Cow::Borrowed,
+        )
     }
 
     /// Access the agent registry (immutable).
@@ -227,7 +227,10 @@ impl SkillManager {
         skill_names: &[String],
         options: &RemoveOptions,
     ) -> Result<()> {
-        let cwd = options.cwd.clone().unwrap_or_else(|| self.cwd());
+        let cwd = options
+            .cwd
+            .clone()
+            .unwrap_or_else(|| self.cwd().into_owned());
         let scope = options.scope;
 
         for name in skill_names {

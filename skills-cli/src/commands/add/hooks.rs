@@ -107,7 +107,7 @@ pub(super) async fn prompt_security_advisory(
         return Ok(None);
     };
 
-    let is_private = skill::lock::is_repo_private(&owner, &repo)
+    let is_private = skill::github::is_repo_private(&owner, &repo)
         .await
         .ok()
         .flatten();
@@ -220,10 +220,10 @@ pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills
             .subpath
             .as_deref()
             .map(|sp| format!("{}/SKILL.md", sp.trim_end_matches('/')));
-        let hash = skill::lock::fetch_skill_folder_hash(
+        let hash = skill::github::fetch_skill_folder_hash(
             &owner_repo,
             skill_path.as_deref().unwrap_or(""),
-            skill::lock::get_github_token().as_deref(),
+            skill::github::get_token().as_deref(),
         )
         .await
         .unwrap_or(None)

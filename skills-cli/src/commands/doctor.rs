@@ -199,11 +199,12 @@ async fn check_lock_consistency(manager: &SkillManager, cwd: &Path, findings: &m
         cwd: Some(cwd.to_path_buf()),
     };
     let installed = manager.list_installed(&list_opts).await.unwrap_or_default();
-    let installed_names: Vec<String> = installed.iter().map(|s| s.name.clone()).collect();
+    let installed_names: std::collections::HashSet<&str> =
+        installed.iter().map(|s| s.name.as_str()).collect();
 
     let mut ghost_count = 0u32;
     for name in lock.skills.keys() {
-        if !installed_names.contains(name) {
+        if !installed_names.contains(name.as_str()) {
             ghost_count += 1;
             findings.push(Finding {
                 severity: Severity::Warning,

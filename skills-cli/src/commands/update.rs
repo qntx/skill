@@ -55,7 +55,7 @@ pub(crate) async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let token = skill::lock::get_github_token();
+    let token = skill::github::get_token();
     let mut updates: Vec<UpdateEntry> = Vec::new();
     let mut skipped: Vec<SkippedSkill> = Vec::new();
 
@@ -71,7 +71,8 @@ pub(crate) async fn run() -> Result<()> {
 
         let skill_path = entry.skill_path.as_deref().unwrap_or_default();
         if let Ok(Some(latest)) =
-            skill::lock::fetch_skill_folder_hash(&entry.source, skill_path, token.as_deref()).await
+            skill::github::fetch_skill_folder_hash(&entry.source, skill_path, token.as_deref())
+                .await
             && latest != entry.skill_folder_hash
         {
             updates.push(UpdateEntry {

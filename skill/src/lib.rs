@@ -37,6 +37,7 @@ use pathdiff as _;
 pub mod agents;
 pub mod error;
 pub mod git;
+pub mod github;
 pub mod installer;
 pub mod local_lock;
 pub mod lock;
