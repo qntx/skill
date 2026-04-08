@@ -214,7 +214,7 @@ mod tests {
 
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.skills.len(), 1);
-        let entry = &parsed.skills["my-skill"];
+        let entry = parsed.skills.get("my-skill").expect("key exists");
         assert_eq!(entry.source, "owner/repo");
         assert_eq!(entry.source_type, "github");
         assert_eq!(entry.computed_hash, "abc123");
@@ -271,7 +271,10 @@ mod tests {
         let read_back = read_local_lock(dir.path()).await.unwrap();
 
         assert_eq!(read_back.skills.len(), 1);
-        assert_eq!(read_back.skills["test"].source, "src");
+        assert_eq!(
+            read_back.skills.get("test").expect("key exists").source,
+            "src"
+        );
     }
 
     #[tokio::test]
@@ -342,8 +345,8 @@ mod tests {
             .unwrap();
         assert!(removed);
 
-        let lock = read_local_lock(dir.path()).await.unwrap();
-        assert!(lock.skills.is_empty());
+        let after_remove = read_local_lock(dir.path()).await.unwrap();
+        assert!(after_remove.skills.is_empty());
     }
 
     #[tokio::test]
