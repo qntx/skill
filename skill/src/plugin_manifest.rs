@@ -10,27 +10,39 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
+/// Deserialized `marketplace.json` content.
 struct MarketplaceManifest {
+    /// Top-level metadata.
     metadata: Option<MarketplaceMetadata>,
+    /// Plugin entries.
     plugins: Option<Vec<PluginManifestEntry>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Marketplace metadata block.
 struct MarketplaceMetadata {
+    /// Root directory for plugin assets.
     plugin_root: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+/// A single plugin entry in a marketplace or plugin manifest.
 struct PluginManifestEntry {
+    /// Source reference (string or object).
     source: Option<serde_json::Value>,
+    /// Paths to skill directories.
     skills: Option<Vec<String>>,
+    /// Plugin display name.
     name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+/// Deserialized `plugin.json` content.
 struct PluginManifest {
+    /// Paths to skill directories.
     skills: Option<Vec<String>>,
+    /// Plugin display name.
     name: Option<String>,
 }
 
@@ -53,6 +65,7 @@ fn is_valid_relative_path(path: &str) -> bool {
 ///
 /// Returns directories that CONTAIN skills (to be searched for child
 /// `SKILL.md` files).
+#[allow(clippy::excessive_nesting, reason = "manifest × plugin × skill path iteration")]
 pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
     let mut search_dirs = Vec::new();
 
@@ -129,6 +142,7 @@ pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
 /// This allows grouping skills by their parent plugin.
 ///
 /// Returns `HashMap<AbsolutePath, PluginName>`.
+#[allow(clippy::excessive_nesting, reason = "manifest × plugin × skill path iteration")]
 pub async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
     let mut groupings = HashMap::new();
 

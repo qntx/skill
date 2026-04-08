@@ -30,13 +30,13 @@ const GRAYS: &[&str] = &[
     "\x1b[38;5;238m",
 ];
 
-pub const RESET: &str = "\x1b[0m";
-pub const DIM: &str = "\x1b[38;5;102m";
-pub const TEXT: &str = "\x1b[38;5;145m";
-pub const GREEN: &str = "\x1b[32m";
-pub const YELLOW: &str = "\x1b[33m";
-pub const CYAN: &str = "\x1b[36m";
-pub const BOLD: &str = "\x1b[1m";
+pub(crate) const RESET: &str = "\x1b[0m";
+pub(crate) const DIM: &str = "\x1b[38;5;102m";
+pub(crate) const TEXT: &str = "\x1b[38;5;145m";
+pub(crate) const GREEN: &str = "\x1b[32m";
+pub(crate) const YELLOW: &str = "\x1b[33m";
+pub(crate) const CYAN: &str = "\x1b[36m";
+pub(crate) const BOLD: &str = "\x1b[1m";
 
 const S_STEP_ACTIVE: &str = "\x1b[32m◆\x1b[0m";
 const S_STEP_SUBMIT: &str = "\x1b[32m◇\x1b[0m";
@@ -65,7 +65,7 @@ impl PromptState {
 }
 
 /// Print the SKILLS ASCII logo with a gradient effect.
-pub fn show_logo() {
+pub(crate) fn show_logo() {
     println!();
     for (i, line) in LOGO_LINES.iter().enumerate() {
         let gray = GRAYS.get(i).unwrap_or(&GRAYS[0]);
@@ -74,7 +74,7 @@ pub fn show_logo() {
 }
 
 /// Print the full banner (logo + version + usage hints).
-pub fn show_banner(_version: &str) {
+pub(crate) fn show_banner(_version: &str) {
     show_logo();
     println!();
     println!("{DIM}The open agent skills ecosystem{RESET}");
@@ -124,7 +124,7 @@ pub fn show_banner(_version: &str) {
 ///
 /// Call this before any `cliclack` `.interact()` call to prevent cascading
 /// auto-confirmation on Windows.
-pub fn drain_input_events() {
+pub(crate) fn drain_input_events() {
     let _ = terminal::enable_raw_mode();
     while event::poll(std::time::Duration::from_millis(10)).unwrap_or(false) {
         let _ = event::read();
@@ -136,13 +136,13 @@ pub fn drain_input_events() {
 /// and the current directory with `.`.
 #[must_use]
 #[allow(dead_code)]
-pub fn shorten_path(path: &std::path::Path) -> String {
+pub(crate) fn shorten_path(path: &std::path::Path) -> String {
     shorten_path_with_cwd(path, &std::env::current_dir().unwrap_or_default())
 }
 
 /// Shorten a path relative to a given `cwd`.
 #[must_use]
-pub fn shorten_path_with_cwd(path: &std::path::Path, cwd: &std::path::Path) -> String {
+pub(crate) fn shorten_path_with_cwd(path: &std::path::Path, cwd: &std::path::Path) -> String {
     // Check cwd first so project-relative paths take priority over home-relative.
     if let Ok(suffix) = path.strip_prefix(cwd) {
         return if suffix.as_os_str().is_empty() {
@@ -167,13 +167,13 @@ pub fn shorten_path_with_cwd(path: &std::path::Path, cwd: &std::path::Path) -> S
 ///
 /// Matches the `TypeScript` `formatList(items, maxShow = 5)` behaviour.
 #[must_use]
-pub fn format_list(items: &[String]) -> String {
+pub(crate) fn format_list(items: &[String]) -> String {
     format_list_max(items, 5)
 }
 
 /// Format with a custom truncation threshold.
 #[must_use]
-pub fn format_list_max(items: &[String], max_show: usize) -> String {
+pub(crate) fn format_list_max(items: &[String], max_show: usize) -> String {
     if items.is_empty() {
         return String::new();
     }
@@ -209,7 +209,7 @@ fn render_lines(stdout: &mut io::Stdout, lines: &[String], height: &mut u16) -> 
 
 /// A single selectable item.
 #[derive(Clone)]
-pub struct SearchItem {
+pub(crate) struct SearchItem {
     /// The value returned on selection.
     pub value: String,
     /// Display label.
@@ -219,7 +219,7 @@ pub struct SearchItem {
 }
 
 /// A locked section whose items are always included in the result.
-pub struct LockedSection {
+pub(crate) struct LockedSection {
     /// Section title (e.g. "Universal agents").
     pub title: String,
     /// Items that are always selected.
@@ -227,7 +227,7 @@ pub struct LockedSection {
 }
 
 /// Options for the search multiselect prompt.
-pub struct SearchMultiselectOptions {
+pub(crate) struct SearchMultiselectOptions {
     /// Prompt message.
     pub message: String,
     /// Selectable items.
@@ -243,7 +243,7 @@ pub struct SearchMultiselectOptions {
 }
 
 /// Result of the search multiselect prompt.
-pub enum SearchMultiselectResult {
+pub(crate) enum SearchMultiselectResult {
     /// User confirmed selection.
     Selected(Vec<String>),
     /// User cancelled.
@@ -324,7 +324,7 @@ fn build_multiselect_lines(
             if let Some(ls) = locked
                 && !ls.items.is_empty()
             {
-                lines.push(S_BAR.to_string());
+                lines.push(S_BAR.to_owned());
                 lines.push(format!(
                         "{S_BAR}  {S_BAR_H}{S_BAR_H} \x1b[1m{}\x1b[0m \x1b[2m── always included\x1b[0m {}{S_BAR_H}",
                         ls.title,
@@ -336,7 +336,7 @@ fn build_multiselect_lines(
                         item.label
                     ));
                 }
-                lines.push(S_BAR.to_string());
+                lines.push(S_BAR.to_owned());
                 lines.push(format!(
                     "{S_BAR}  {S_BAR_H}{S_BAR_H} \x1b[1mAdditional agents\x1b[0m {}",
                     S_BAR_H.repeat(29)
@@ -349,7 +349,7 @@ fn build_multiselect_lines(
             lines.push(format!(
                 "{S_BAR}  \x1b[2m↑↓ move, space select, enter confirm\x1b[0m"
             ));
-            lines.push(S_BAR.to_string());
+            lines.push(S_BAR.to_owned());
 
             if filtered.is_empty() {
                 lines.push(format!("{S_BAR}  \x1b[2mNo matches found\x1b[0m"));
@@ -390,7 +390,7 @@ fn build_multiselect_lines(
                 }
             }
 
-            lines.push(S_BAR.to_string());
+            lines.push(S_BAR.to_owned());
             let labels = collect_labels(locked, items, selected);
             if labels.is_empty() {
                 lines.push(format!("{S_BAR}  \x1b[2mSelected: (none)\x1b[0m"));
@@ -400,7 +400,7 @@ fn build_multiselect_lines(
                     format_summary(&labels)
                 ));
             }
-            lines.push("\x1b[2m└\x1b[0m".to_string());
+            lines.push("\x1b[2m└\x1b[0m".to_owned());
         }
         PromptState::Submit => {
             let labels = collect_labels(locked, items, selected);
@@ -450,7 +450,7 @@ impl Drop for RawModeGuard {
 /// # Errors
 ///
 /// Returns an error if terminal raw mode or I/O operations fail.
-pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchMultiselectResult> {
+pub(crate) fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchMultiselectResult> {
     let mut stdout = io::stdout();
     let mut query = String::new();
     let mut cursor: usize = 0;
@@ -595,7 +595,7 @@ pub fn search_multiselect(opts: &SearchMultiselectOptions) -> io::Result<SearchM
 
 /// A search result item for the fzf prompt.
 #[derive(Clone)]
-pub struct FzfItem {
+pub(crate) struct FzfItem {
     /// Display label (skill name).
     pub label: String,
     /// Hint shown dim next to label (e.g. source/pkg).
@@ -607,7 +607,7 @@ pub struct FzfItem {
 }
 
 /// Result of the fzf search prompt.
-pub enum FzfResult {
+pub(crate) enum FzfResult {
     /// User selected an item.
     Selected(String),
     /// User cancelled.
@@ -697,7 +697,7 @@ const fn debounce_delay(query_len: usize) -> u64 {
     }
 }
 
-pub fn fzf_search<F>(message: &str, search_fn: F) -> io::Result<FzfResult>
+pub(crate) fn fzf_search<F>(message: &str, search_fn: F) -> io::Result<FzfResult>
 where
     F: Fn(&str) -> Vec<FzfItem>,
 {

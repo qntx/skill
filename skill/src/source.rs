@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::error::{Error, Result};
+use crate::error::{Result, SkillError};
 use crate::types::{ParsedSource, SourceType};
 
 /// Source aliases mapping common shorthands to canonical sources.
@@ -30,6 +30,7 @@ static SOURCE_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
 /// - Prefix shorthands (`github:owner/repo`, `gitlab:owner/repo`)
 /// - Direct git URLs (fallback)
 #[must_use]
+#[allow(clippy::too_many_lines, reason = "sequential match arms for different source formats")]
 pub fn parse_source(input: &str) -> ParsedSource {
     let mut input = input.to_owned();
 
@@ -262,11 +263,10 @@ pub fn get_owner_repo(parsed: &ParsedSource) -> Option<String> {
 /// Parse `owner/repo` into separate components.
 #[must_use]
 pub fn parse_owner_repo(owner_repo: &str) -> Option<(String, String)> {
-    let parts: Vec<&str> = owner_repo.splitn(3, '/').collect();
-    if parts.len() == 2 {
-        Some((parts[0].to_owned(), parts[1].to_owned()))
-    } else {
-        None
+    let mut parts = owner_repo.splitn(3, '/');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(owner), Some(repo), None) => Some((owner.to_owned(), repo.to_owned())),
+        _ => None,
     }
 }
 
@@ -279,7 +279,7 @@ pub fn sanitize_subpath(subpath: &str) -> Result<String> {
     let normalized = subpath.replace('\\', "/");
     for segment in normalized.split('/') {
         if segment == ".." {
-            return Err(Error::PathTraversal {
+            return Err(SkillError::PathTraversal {
                 context: "subpath",
                 path: subpath.to_owned(),
             });
@@ -288,6 +288,7 @@ pub fn sanitize_subpath(subpath: &str) -> Result<String> {
     Ok(subpath.to_owned())
 }
 
+/// Check whether the input looks like a local filesystem path.
 fn is_local_path(input: &str) -> bool {
     if Path::new(input).is_absolute() {
         return true;
@@ -296,18 +297,16 @@ fn is_local_path(input: &str) -> bool {
         return true;
     }
     // Windows absolute paths like C:\ or D:\
-    if input.len() >= 3 {
-        let bytes = input.as_bytes();
-        if bytes[0].is_ascii_alphabetic()
-            && bytes[1] == b':'
-            && (bytes[2] == b'/' || bytes[2] == b'\\')
-        {
-            return true;
-        }
+    if let [drive, b':', sep, ..] = input.as_bytes()
+        && drive.is_ascii_alphabetic()
+        && (*sep == b'/' || *sep == b'\\')
+    {
+        return true;
     }
     false
 }
 
+/// Check whether the input is a well-known HTTP(S) URL.
 fn is_well_known_url(input: &str) -> bool {
     if !input.starts_with("http://") && !input.starts_with("https://") {
         return false;
@@ -328,6 +327,8 @@ fn is_well_known_url(input: &str) -> bool {
 
 // Compiled regex patterns (cached via LazyLock)
 
+/// Regex for GitHub tree URLs with subpath.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn github_tree_with_path_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").expect("valid regex")
@@ -335,6 +336,8 @@ fn github_tree_with_path_re() -> &'static Regex {
     &RE
 }
 
+/// Regex for GitHub tree URLs without subpath.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn github_tree_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").expect("valid regex")
@@ -342,12 +345,16 @@ fn github_tree_re() -> &'static Regex {
     &RE
 }
 
+/// Regex for GitHub repository URLs.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn github_repo_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"github\.com/([^/]+)/([^/]+)").expect("valid regex"));
     &RE
 }
 
+/// Regex for GitLab tree URLs with subpath.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn gitlab_tree_with_path_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)/(.+)").expect("valid regex")
@@ -355,6 +362,8 @@ fn gitlab_tree_with_path_re() -> &'static Regex {
     &RE
 }
 
+/// Regex for GitLab tree URLs without subpath.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn gitlab_tree_re() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)$").expect("valid regex")
@@ -362,18 +371,24 @@ fn gitlab_tree_re() -> &'static Regex {
     &RE
 }
 
+/// Regex for GitLab repository URLs.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn gitlab_repo_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("valid regex"));
     &RE
 }
 
+/// Regex for `owner/repo@ref` shorthand.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn at_skill_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("valid regex"));
     &RE
 }
 
+/// Regex for `owner/repo[/subpath]` shorthand.
+#[allow(clippy::expect_used, reason = "static regex patterns are known valid at compile time")]
 fn shorthand_re() -> &'static Regex {
     static RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("valid regex"));

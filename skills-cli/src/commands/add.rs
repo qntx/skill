@@ -11,7 +11,7 @@ use std::path::Path;
 
 use clap::Args;
 use miette::{IntoDiagnostic, Result, miette};
-pub use select::select_agents;
+pub(crate) use select::select_agents;
 use skill::SkillManager;
 use skill::types::{AgentId, DiscoverOptions, InstallOptions, InstallScope, Skill, SourceType};
 
@@ -19,7 +19,7 @@ use crate::ui::{self, DIM, GREEN, RESET, TEXT, YELLOW};
 
 /// Arguments for the `add` command.
 #[derive(Args)]
-pub struct AddArgs {
+pub(crate) struct AddArgs {
     /// Source(s) to install from (e.g. `owner/repo`, URL, local path).
     pub source: Vec<String>,
 
@@ -61,7 +61,7 @@ pub struct AddArgs {
 }
 
 /// Options for `run_add` when called programmatically.
-pub struct RunAddOptions {
+pub(crate) struct RunAddOptions {
     pub source: String,
     pub global: Option<bool>,
     pub yes: bool,
@@ -71,7 +71,7 @@ pub struct RunAddOptions {
 }
 
 /// Programmatic entry point used by `install_lock` and `update`.
-pub async fn run_add(opts: RunAddOptions) -> Result<()> {
+pub(crate) async fn run_add(opts: RunAddOptions) -> Result<()> {
     let args = AddArgs {
         source: vec![opts.source],
         global: opts.global,
@@ -88,7 +88,7 @@ pub async fn run_add(opts: RunAddOptions) -> Result<()> {
 }
 
 /// Run the add command.
-pub async fn run(mut args: AddArgs) -> Result<()> {
+pub(crate) async fn run(mut args: AddArgs) -> Result<()> {
     if args.source.is_empty() {
         return Err(miette!(
             help = "Usage: skills add <source> [options]\nExample: skills add qntx/skills",
@@ -192,7 +192,7 @@ async fn run_single_source(
             .map_err(|e| miette!("{e}"))?;
 
     if skills.is_empty() {
-        spinner.stop("\x1b[31mNo skills found\x1b[0m".to_string());
+        spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
         let _ = cliclack::outro(
             "\x1b[31mNo valid skills found. Skills require a SKILL.md with name and description.\x1b[0m",
         );
@@ -307,7 +307,7 @@ async fn handle_wellknown_source(
         .map_err(|e| miette!("{e}"))?;
 
     if wk_skills.is_empty() {
-        spinner.stop("\x1b[31mNo skills found\x1b[0m".to_string());
+        spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
         let _ = cliclack::outro(
             "\x1b[31mNo skills found at this URL. Make sure the server has a /.well-known/skills/index.json file.\x1b[0m",
         );

@@ -161,7 +161,7 @@ pub(super) fn select_skills(
 ///
 /// Matches the TS: universal agents in a locked section, detected agents
 /// pre-selected, search filtering, last-selection memory.
-pub async fn select_agents(
+pub(crate) async fn select_agents(
     manager: &SkillManager,
     agent_arg: Option<&Vec<String>>,
     yes: bool,

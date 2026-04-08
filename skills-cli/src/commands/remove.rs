@@ -17,7 +17,7 @@ use crate::ui::{self, DIM, RESET};
 
 /// Arguments for the `remove` command.
 #[derive(Args)]
-pub struct RemoveArgs {
+pub(crate) struct RemoveArgs {
     /// Skill names to remove (interactive selection if omitted).
     pub skills: Vec<String>,
 
@@ -112,7 +112,7 @@ fn validate_agents(manager: &SkillManager, agent_names: &[String]) -> Result<Vec
 
 /// Run the remove command.
 #[allow(clippy::cognitive_complexity)]
-pub async fn run(mut args: RemoveArgs) -> Result<()> {
+pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let scope = if args.global {
         InstallScope::Global

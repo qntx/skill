@@ -25,8 +25,11 @@ pub struct ManagerConfig {
 /// Builder for constructing a [`SkillManager`].
 #[derive(Debug, Default)]
 pub struct SkillManagerBuilder {
+    /// Custom agent registry override.
     agents: Option<AgentRegistry>,
+    /// Custom provider registry override.
     providers: Option<ProviderRegistry>,
+    /// Manager configuration.
     config: ManagerConfig,
 }
 
@@ -85,8 +88,11 @@ impl SkillManagerBuilder {
 /// ```
 #[derive(Debug)]
 pub struct SkillManager {
+    /// Agent registry.
     agents: AgentRegistry,
+    /// Provider registry.
     providers: ProviderRegistry,
+    /// Manager configuration.
     config: ManagerConfig,
 }
 
@@ -141,6 +147,7 @@ impl SkillManager {
 
     /// Parse a source string into a [`ParsedSource`].
     #[must_use]
+    #[allow(clippy::unused_self, reason = "method form for API consistency")]
     pub fn parse_source(&self, input: &str) -> ParsedSource {
         crate::source::parse_source(input)
     }
@@ -186,7 +193,7 @@ impl SkillManager {
         let agent = self
             .agents
             .get(agent_id)
-            .ok_or_else(|| crate::error::Error::UnknownAgent(agent_id.to_string()))?;
+            .ok_or_else(|| crate::error::SkillError::UnknownAgent(agent_id.to_string()))?;
 
         installer::install_skill_for_agent(skill, agent, &self.agents, options).await
     }
@@ -211,6 +218,7 @@ impl SkillManager {
     /// # Errors
     ///
     /// Returns an error on I/O failure.
+    #[allow(clippy::excessive_nesting, reason = "skill × agent × path cleanup iteration")]
     pub async fn remove_skills(
         &self,
         skill_names: &[String],
@@ -257,8 +265,8 @@ impl SkillManager {
                         if *path == canonical {
                             continue;
                         }
-                        let _ = tokio::fs::remove_dir_all(path).await;
-                        let _ = tokio::fs::remove_file(path).await;
+                        drop(tokio::fs::remove_dir_all(path).await);
+                        drop(tokio::fs::remove_file(path).await);
                     }
                 }
             }
@@ -281,8 +289,8 @@ impl SkillManager {
             }
 
             if !still_used {
-                let _ = tokio::fs::remove_dir_all(&canonical).await;
-                let _ = tokio::fs::remove_file(&canonical).await;
+                drop(tokio::fs::remove_dir_all(&canonical).await);
+                drop(tokio::fs::remove_file(&canonical).await);
             }
         }
 

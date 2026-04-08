@@ -15,7 +15,7 @@ use crate::ui::{self, BOLD, CYAN, DIM, RESET, TEXT};
 
 /// Arguments for the `find` command.
 #[derive(Args)]
-pub struct FindArgs {
+pub(crate) struct FindArgs {
     /// Search query (interactive if omitted).
     pub query: Vec<String>,
 }
@@ -193,7 +193,7 @@ async fn is_repo_public(pkg: &str) -> bool {
 }
 
 /// Run the find command.
-pub async fn run(args: FindArgs) -> Result<()> {
+pub(crate) async fn run(args: FindArgs) -> Result<()> {
     let query = args.query.join(" ");
 
     // One-shot search (with query argument)

@@ -6,8 +6,11 @@ use super::traits::{BoxFuture, HostProvider};
 use crate::error::Result;
 use crate::types::{RemoteSkill, WellKnownIndex, WellKnownSkill, WellKnownSkillEntry};
 
+/// Standard well-known skills directory path.
 const WELL_KNOWN_PATH: &str = ".well-known/skills";
+/// Index file name within the well-known path.
 const INDEX_FILE: &str = "index.json";
+/// Hosts excluded from well-known skill resolution.
 const EXCLUDED_HOSTS: &[&str] = &["github.com", "gitlab.com", "huggingface.co"];
 
 /// Provider for well-known skills endpoints.
@@ -152,7 +155,7 @@ impl WellKnownProvider {
             _ => return Ok(None),
         };
 
-        let content = resp.text().await.map_err(crate::error::Error::from)?;
+        let content = resp.text().await.map_err(crate::error::SkillError::from)?;
 
         let fm = crate::skills::extract_frontmatter(&content);
         let (name, description) = match fm {
@@ -182,9 +185,9 @@ impl WellKnownProvider {
                 continue;
             }
             let file_url = format!("{skill_base}/{file_path}");
-            if let Ok(resp) = client.get(&file_url).send().await
-                && resp.status().is_success()
-                && let Ok(file_content) = resp.text().await
+            if let Ok(file_resp) = client.get(&file_url).send().await
+                && file_resp.status().is_success()
+                && let Ok(file_content) = file_resp.text().await
             {
                 files.insert(file_path.clone(), file_content);
             }
@@ -223,9 +226,9 @@ impl WellKnownProvider {
             return Ok(None);
         };
 
-        if index.skills.len() == 1 {
+        if let [single] = index.skills.as_slice() {
             return self
-                .fetch_skill_by_entry(&resolved_base, &index.skills[0])
+                .fetch_skill_by_entry(&resolved_base, single)
                 .await;
         }
 
@@ -233,6 +236,7 @@ impl WellKnownProvider {
     }
 }
 
+/// Check whether a skill entry has all required fields.
 fn is_valid_skill_entry(entry: &WellKnownSkillEntry) -> bool {
     if entry.name.is_empty() || entry.description.is_empty() || entry.files.is_empty() {
         return false;

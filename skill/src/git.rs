@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use tempfile::TempDir;
 
-use crate::error::{Error, Result};
+use crate::error::{Result, SkillError};
 
 /// Clone timeout matching the TS `CLONE_TIMEOUT_MS`.
 const CLONE_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(1);
@@ -18,10 +18,10 @@ const CLONE_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(1);
 ///
 /// # Errors
 ///
-/// Returns [`Error::GitClone`] with `is_timeout` / `is_auth_error` flags
+/// Returns [`SkillError::GitClone`] with `is_timeout` / `is_auth_error` flags
 /// for structured error handling by callers.
 pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
-    let temp_dir = TempDir::new().map_err(|e| Error::io(PathBuf::from("/tmp"), e))?;
+    let temp_dir = TempDir::new().map_err(|e| SkillError::io(PathBuf::from("/tmp"), e))?;
 
     let mut cmd = tokio::process::Command::new("git");
     cmd.arg("clone")
@@ -41,7 +41,7 @@ pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
     let output = match tokio::time::timeout(CLONE_TIMEOUT, cmd.output()).await {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
-            return Err(Error::GitClone {
+            return Err(SkillError::GitClone {
                 url: url.to_owned(),
                 message: format!("failed to run git: {e}"),
                 is_timeout: false,
@@ -49,7 +49,7 @@ pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
             });
         }
         Err(_elapsed) => {
-            return Err(Error::GitClone {
+            return Err(SkillError::GitClone {
                 url: url.to_owned(),
                 message: concat!(
                     "Clone timed out after 60s. This often happens with private repos ",
@@ -83,7 +83,7 @@ pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
             stderr
         };
 
-        return Err(Error::GitClone {
+        return Err(SkillError::GitClone {
             url: url.to_owned(),
             message,
             is_timeout: false,

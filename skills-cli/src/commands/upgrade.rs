@@ -14,7 +14,7 @@ use crate::ui::{DIM, GREEN, RESET, TEXT};
 const GITHUB_API: &str = "https://api.github.com/repos/qntx/skill/releases/latest";
 
 /// Run the upgrade command.
-pub async fn run() -> Result<()> {
+pub(crate) async fn run() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     println!("{TEXT}Current version: {current}{RESET}");
 

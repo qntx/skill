@@ -41,7 +41,7 @@ fn build_install_url(source_url: &str, skill_path: Option<&str>) -> String {
 }
 
 /// Run the update command.
-pub async fn run() -> Result<()> {
+pub(crate) async fn run() -> Result<()> {
     println!("{TEXT}Checking for skill updates...{RESET}");
     println!();
 

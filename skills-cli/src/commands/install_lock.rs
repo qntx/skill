@@ -14,7 +14,7 @@ use super::add::RunAddOptions;
 use crate::ui::{DIM, RESET, TEXT};
 
 /// Run the `experimental_install` command.
-pub async fn run() -> Result<()> {
+pub(crate) async fn run() -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let lock_path = cwd.join("skills-lock.json");
 

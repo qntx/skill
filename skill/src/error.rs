@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// The primary error type for all skill operations.
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub enum SkillError {
     /// A required skill was not found.
     #[error("skill not found: {0}")]
     SkillNotFound(String),
@@ -92,10 +92,10 @@ pub enum Error {
     },
 }
 
-/// Convenience type alias for `Result<T, Error>`.
-pub type Result<T> = std::result::Result<T, Error>;
+/// Convenience type alias for `Result<T, SkillError>`.
+pub type Result<T> = std::result::Result<T, SkillError>;
 
-impl Error {
+impl SkillError {
     /// Create an I/O error with path context.
     pub fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
         Self::Io {

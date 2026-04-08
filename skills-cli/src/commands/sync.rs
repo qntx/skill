@@ -19,7 +19,7 @@ use crate::ui::{self, DIM, RESET};
 
 /// Arguments for the `experimental_sync` command.
 #[derive(Args)]
-pub struct SyncArgs {
+pub(crate) struct SyncArgs {
     /// Target agents (use '*' for all).
     #[arg(short, long, num_args = 1..)]
     pub agent: Option<Vec<String>>,
@@ -140,7 +140,7 @@ struct SyncInstallErr {
 
 /// Run the `experimental_sync` command.
 #[allow(clippy::cognitive_complexity)]
-pub async fn run(args: SyncArgs) -> Result<()> {
+pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let node_modules = cwd.join("node_modules");
 

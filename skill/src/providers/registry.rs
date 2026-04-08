@@ -8,6 +8,7 @@ use super::wellknown::WellKnownProvider;
 /// Pre-populated with the built-in well-known provider.
 #[derive(Debug)]
 pub struct ProviderRegistry {
+    /// Ordered list of registered host providers.
     providers: Vec<Box<dyn HostProvider>>,
 }
 

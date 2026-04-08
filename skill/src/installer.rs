@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::agents::AgentRegistry;
-use crate::error::{Error, Result};
+use crate::error::{Result, SkillError};
 use crate::skills::parse_skill_md;
 use crate::types::{
     AGENTS_DIR, AgentConfig, AgentId, InstallMode, InstallResult, InstallScope, InstalledSkill,
@@ -119,7 +119,7 @@ pub async fn install_skill_for_agent(
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
     if scope == InstallScope::Global && agent.global_skills_dir.is_none() {
-        return Err(Error::AgentUnsupported {
+        return Err(SkillError::AgentUnsupported {
             agent: agent.display_name.clone(),
             operation: "global skill installation",
         });
@@ -132,7 +132,7 @@ pub async fn install_skill_for_agent(
     let agent_dir = agent_base.join(&skill_name);
 
     if !is_path_safe(&canonical_base, &canonical_dir) || !is_path_safe(&agent_base, &agent_dir) {
-        return Err(Error::PathTraversal {
+        return Err(SkillError::PathTraversal {
             context: "skill name",
             path: skill_name,
         });
@@ -198,7 +198,7 @@ pub async fn install_remote_skill_content(
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
     if scope == InstallScope::Global && agent.global_skills_dir.is_none() {
-        return Err(Error::AgentUnsupported {
+        return Err(SkillError::AgentUnsupported {
             agent: agent.display_name.clone(),
             operation: "global skill installation",
         });
@@ -211,7 +211,7 @@ pub async fn install_remote_skill_content(
     let agent_dir = agent_base.join(&skill_name);
 
     if !is_path_safe(&canonical_base, &canonical_dir) || !is_path_safe(&agent_base, &agent_dir) {
-        return Err(Error::PathTraversal {
+        return Err(SkillError::PathTraversal {
             context: "skill name",
             path: skill_name,
         });
@@ -223,7 +223,7 @@ pub async fn install_remote_skill_content(
         clean_and_create(&agent_dir).await?;
         tokio::fs::write(agent_dir.join("SKILL.md"), content)
             .await
-            .map_err(|e| Error::io(&agent_dir, e))?;
+            .map_err(|e| SkillError::io(&agent_dir, e))?;
         return Ok(InstallResult {
             path: agent_dir,
             canonical_path: None,
@@ -235,7 +235,7 @@ pub async fn install_remote_skill_content(
     clean_and_create(&canonical_dir).await?;
     tokio::fs::write(canonical_dir.join("SKILL.md"), content)
         .await
-        .map_err(|e| Error::io(&canonical_dir, e))?;
+        .map_err(|e| SkillError::io(&canonical_dir, e))?;
 
     if scope == InstallScope::Global && registry.is_universal(&agent.name) {
         return Ok(InstallResult {
@@ -251,7 +251,7 @@ pub async fn install_remote_skill_content(
         clean_and_create(&agent_dir).await?;
         tokio::fs::write(agent_dir.join("SKILL.md"), content)
             .await
-            .map_err(|e| Error::io(&agent_dir, e))?;
+            .map_err(|e| SkillError::io(&agent_dir, e))?;
     }
 
     Ok(InstallResult {
@@ -267,10 +267,10 @@ pub async fn install_remote_skill_content(
 /// # Errors
 ///
 /// Returns an error on I/O failure.
-#[allow(clippy::implicit_hasher)]
-pub async fn install_wellknown_skill_files(
+#[allow(clippy::excessive_nesting, reason = "closure with async file operations")]
+pub async fn install_wellknown_skill_files<S: ::std::hash::BuildHasher + Clone + Send + Sync>(
     install_name: &str,
-    files: &std::collections::HashMap<String, String>,
+    files: &std::collections::HashMap<String, String, S>,
     agent: &AgentConfig,
     registry: &AgentRegistry,
     options: &crate::types::InstallOptions,
@@ -282,7 +282,7 @@ pub async fn install_wellknown_skill_files(
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
     if scope == InstallScope::Global && agent.global_skills_dir.is_none() {
-        return Err(Error::AgentUnsupported {
+        return Err(SkillError::AgentUnsupported {
             agent: agent.display_name.clone(),
             operation: "global skill installation",
         });
@@ -295,7 +295,7 @@ pub async fn install_wellknown_skill_files(
     let agent_dir = agent_base.join(&skill_name);
 
     if !is_path_safe(&canonical_base, &canonical_dir) || !is_path_safe(&agent_base, &agent_dir) {
-        return Err(Error::PathTraversal {
+        return Err(SkillError::PathTraversal {
             context: "skill name",
             path: skill_name,
         });
@@ -315,13 +315,13 @@ pub async fn install_wellknown_skill_files(
                 {
                     tokio::fs::create_dir_all(parent)
                         .await
-                        .map_err(|e| Error::io(parent, e))?;
+                        .map_err(|e| SkillError::io(parent, e))?;
                 }
                 tokio::fs::write(&full, content)
                     .await
-                    .map_err(|e| Error::io(&full, e))?;
+                    .map_err(|e| SkillError::io(&full, e))?;
             }
-            Ok::<(), Error>(())
+            Ok::<(), SkillError>(())
         }
     };
 
@@ -373,6 +373,7 @@ pub async fn install_wellknown_skill_files(
 /// # Errors
 ///
 /// Returns an error on I/O or parse failure.
+#[allow(clippy::excessive_nesting, reason = "nested scope × agent × dir iteration")]
 pub async fn list_installed_skills(
     registry: &AgentRegistry,
     options: &ListOptions,
@@ -458,6 +459,7 @@ pub async fn list_installed_skills(
     Ok(result)
 }
 
+/// Scan a directory for installed skills.
 async fn scan_skills_dir(
     dir: &Path,
     scope: InstallScope,
@@ -492,6 +494,7 @@ async fn scan_skills_dir(
     }
 }
 
+/// Scan a single agent's skills directory and merge results.
 async fn scan_skills_dir_for_agent(
     dir: &Path,
     scope: InstallScope,
@@ -584,30 +587,34 @@ pub fn get_canonical_path(skill_name: &str, scope: InstallScope, cwd: &Path) -> 
     canonical_skills_dir(scope, cwd).join(sanitize_name(skill_name))
 }
 
+/// Remove and recreate a directory.
 async fn clean_and_create(path: &Path) -> Result<()> {
-    let _ = tokio::fs::remove_dir_all(path).await;
+    drop(tokio::fs::remove_dir_all(path).await);
     tokio::fs::create_dir_all(path)
         .await
-        .map_err(|e| Error::io(path, e))
+        .map_err(|e| SkillError::io(path, e))
 }
 
+/// Files to exclude when copying skill directories.
 const EXCLUDE_FILES: &[&str] = &["metadata.json"];
+/// Directories to exclude when copying skill directories.
 const EXCLUDE_DIRS: &[&str] = &[".git"];
 
+/// Recursively copy a directory, excluding metadata and hidden files.
 async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
     tokio::fs::create_dir_all(dest)
         .await
-        .map_err(|e| Error::io(dest, e))?;
+        .map_err(|e| SkillError::io(dest, e))?;
 
     let mut entries = tokio::fs::read_dir(src)
         .await
-        .map_err(|e| Error::io(src, e))?;
+        .map_err(|e| SkillError::io(src, e))?;
 
-    while let Some(entry) = entries.next_entry().await.map_err(|e| Error::io(src, e))? {
+    while let Some(entry) = entries.next_entry().await.map_err(|e| SkillError::io(src, e))? {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 
-        let ft = entry.file_type().await.map_err(|e| Error::io(src, e))?;
+        let ft = entry.file_type().await.map_err(|e| SkillError::io(src, e))?;
 
         if ft.is_dir() {
             if EXCLUDE_DIRS.contains(&name_str.as_ref()) || name_str.starts_with('_') {
@@ -630,7 +637,7 @@ async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
                     Box::pin(copy_directory(&src_path, &dest_file)).await?;
                 }
                 Ok(_) => {
-                    let _ = tokio::fs::copy(&src_path, &dest_file).await;
+                    drop(tokio::fs::copy(&src_path, &dest_file).await);
                 }
                 Err(_) => {
                     tracing::warn!("Skipping broken symlink: {}", src_path.display());
@@ -643,7 +650,7 @@ async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
             let dest_file = dest.join(&name);
             tokio::fs::copy(entry.path(), &dest_file)
                 .await
-                .map_err(|e| Error::io(&dest_file, e))?;
+                .map_err(|e| SkillError::io(&dest_file, e))?;
         }
     }
 
@@ -713,13 +720,13 @@ async fn create_symlink(target: &Path, link_path: &Path) -> bool {
                     return true;
                 }
             }
-            let _ = tokio::fs::remove_file(link_path).await;
+            drop(tokio::fs::remove_file(link_path).await);
         } else {
-            let _ = tokio::fs::remove_dir_all(link_path).await;
+            drop(tokio::fs::remove_dir_all(link_path).await);
         }
     } else {
         // ELOOP (circular symlink) or ENOENT — try force-remove just in case.
-        let _ = tokio::fs::remove_file(link_path).await;
+        drop(tokio::fs::remove_file(link_path).await);
     }
 
     // Ensure parent directory exists.

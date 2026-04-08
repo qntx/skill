@@ -15,6 +15,7 @@ use crate::types::{AgentConfig, AgentId, UNIVERSAL_SKILLS_DIR};
 /// Agent frameworks can register additional agents with [`AgentRegistry::register`].
 #[derive(Debug)]
 pub struct AgentRegistry {
+    /// Map of agent IDs to their configurations.
     agents: HashMap<AgentId, AgentConfig>,
 }
 
@@ -69,14 +70,20 @@ impl AgentRegistry {
     }
 
     /// Detect which agents are installed by checking for their known paths.
+    #[allow(clippy::excessive_nesting, reason = "async block reduces nesting but still triggers lint")]
     pub async fn detect_installed(&self) -> Vec<AgentId> {
         let mut installed = Vec::new();
         for (id, config) in &self.agents {
-            for path in &config.detect_paths {
-                if tokio::fs::try_exists(path).await.unwrap_or(false) {
-                    installed.push(id.clone());
-                    break;
+            let found = async {
+                for path in &config.detect_paths {
+                    if tokio::fs::try_exists(path).await.unwrap_or(false) {
+                        return true;
+                    }
                 }
+                false
+            };
+            if found.await {
+                installed.push(id.clone());
             }
         }
         installed.sort();
@@ -130,6 +137,7 @@ impl AgentRegistry {
     }
 }
 
+/// Create an [`AgentConfig`] with the given parameters.
 fn agent(
     name: &str,
     display_name: &str,
@@ -147,6 +155,7 @@ fn agent(
     }
 }
 
+/// Return the user's home directory.
 fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("~"))
 }
@@ -164,6 +173,7 @@ fn xdg_config_home() -> PathBuf {
 }
 
 /// Register all built-in agents matching the `TypeScript` reference.
+#[allow(clippy::too_many_lines, reason = "declarative agent definitions, splitting would reduce clarity")]
 fn register_builtin_agents(reg: &mut AgentRegistry) {
     let h = home();
     let cfg = xdg_config_home();

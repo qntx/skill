@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, Result};
+use crate::error::{Result, SkillError};
 use crate::types::{DiscoverOptions, Skill};
 
 /// Directories to skip during recursive skill search.
@@ -37,7 +37,7 @@ pub async fn parse_skill_md(skill_md_path: &Path, include_internal: bool) -> Res
     let content = match tokio::fs::read_to_string(skill_md_path).await {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(Error::io(skill_md_path, e)),
+        Err(e) => return Err(SkillError::io(skill_md_path, e)),
     };
 
     let Some((frontmatter, _body)) = extract_frontmatter(&content) else {
@@ -184,6 +184,7 @@ pub fn is_subpath_safe(base_path: &Path, subpath: &str) -> bool {
 /// # Errors
 ///
 /// Returns an error if the `subpath` escapes the `base_path`.
+#[allow(clippy::cognitive_complexity, reason = "multi-strategy discovery with fallback logic")]
 pub async fn discover_skills(
     base_path: &Path,
     subpath: Option<&str>,
@@ -192,7 +193,7 @@ pub async fn discover_skills(
     if let Some(sp) = subpath
         && !is_subpath_safe(base_path, sp)
     {
-        return Err(Error::PathTraversal {
+        return Err(SkillError::PathTraversal {
             context: "subpath",
             path: sp.to_owned(),
         });

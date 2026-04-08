@@ -11,7 +11,7 @@ use super::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
 use crate::ui::{DIM, RESET, TEXT};
 
 /// Run the check command.
-pub async fn run() -> Result<()> {
+pub(crate) async fn run() -> Result<()> {
     println!("{TEXT}Checking for skill updates...{RESET}");
     println!();
 

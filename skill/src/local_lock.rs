@@ -9,9 +9,11 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::error::{Error, Result};
+use crate::error::{Result, SkillError};
 
+/// Name of the project-scoped lock file.
 const LOCAL_LOCK_FILE: &str = "skills-lock.json";
+/// Current lock file format version.
 const CURRENT_VERSION: u32 = 1;
 
 /// A single skill entry in the project lock file.
@@ -39,6 +41,7 @@ pub struct LocalSkillLockFile {
 }
 
 impl LocalSkillLockFile {
+    /// Create an empty lock file with the current version.
     const fn empty() -> Self {
         Self {
             version: CURRENT_VERSION,
@@ -68,7 +71,7 @@ pub async fn read_local_lock(cwd: &Path) -> Result<LocalSkillLockFile> {
             _ => Ok(LocalSkillLockFile::empty()),
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(LocalSkillLockFile::empty()),
-        Err(e) => Err(Error::io(path, e)),
+        Err(e) => Err(SkillError::io(path, e)),
     }
 }
 
@@ -83,7 +86,7 @@ pub async fn write_local_lock(lock: &LocalSkillLockFile, cwd: &Path) -> Result<(
     content.push('\n');
     tokio::fs::write(&path, content)
         .await
-        .map_err(|e| Error::io(path, e))
+        .map_err(|e| SkillError::io(path, e))
 }
 
 /// Add or update a skill in the project lock file.
@@ -136,6 +139,7 @@ pub async fn compute_skill_folder_hash(skill_dir: &Path) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Recursively collect file paths and contents from a directory.
 async fn collect_files(
     base: &Path,
     current: &Path,
@@ -143,14 +147,14 @@ async fn collect_files(
 ) -> Result<()> {
     let mut entries = tokio::fs::read_dir(current)
         .await
-        .map_err(|e| Error::io(current, e))?;
+        .map_err(|e| SkillError::io(current, e))?;
 
     while let Some(entry) = entries
         .next_entry()
         .await
-        .map_err(|e| Error::io(current, e))?
+        .map_err(|e| SkillError::io(current, e))?
     {
-        let ft = entry.file_type().await.map_err(|e| Error::io(current, e))?;
+        let ft = entry.file_type().await.map_err(|e| SkillError::io(current, e))?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 
@@ -162,7 +166,7 @@ async fn collect_files(
         } else if ft.is_file() {
             let content = tokio::fs::read(entry.path())
                 .await
-                .map_err(|e| Error::io(entry.path(), e))?;
+                .map_err(|e| SkillError::io(entry.path(), e))?;
             let rel = entry
                 .path()
                 .strip_prefix(base)

@@ -32,6 +32,8 @@
 //! - **`telemetry`** — Enables anonymous usage telemetry. Disabled by default
 //!   for library consumers; enabled by the CLI.
 
+use pathdiff as _;
+
 pub mod agents;
 pub mod error;
 pub mod git;
@@ -47,5 +49,5 @@ pub mod source;
 pub mod telemetry;
 pub mod types;
 
-pub use error::{Error, Result};
+pub use error::{Result, SkillError};
 pub use manager::SkillManager;

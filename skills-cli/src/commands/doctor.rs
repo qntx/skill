@@ -31,7 +31,7 @@ struct Finding {
 }
 
 /// Run the doctor command.
-pub async fn run() -> Result<()> {
+pub(crate) async fn run() -> Result<()> {
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
     let mut findings: Vec<Finding> = Vec::new();

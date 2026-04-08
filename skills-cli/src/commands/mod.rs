@@ -2,33 +2,33 @@
 
 use crate::ui::{DIM, RESET, TEXT};
 
-pub mod add;
-pub mod check;
-pub mod completions;
-pub mod doctor;
-pub mod find;
-pub mod init;
-pub mod install_lock;
-pub mod list;
-pub mod remove;
-pub mod sync;
-pub mod update;
-pub mod upgrade;
+pub(crate) mod add;
+pub(crate) mod check;
+pub(crate) mod completions;
+pub(crate) mod doctor;
+pub(crate) mod find;
+pub(crate) mod init;
+pub(crate) mod install_lock;
+pub(crate) mod list;
+pub(crate) mod remove;
+pub(crate) mod sync;
+pub(crate) mod update;
+pub(crate) mod upgrade;
 
 /// A skill that was skipped during check/update (no trackable version info).
-pub struct SkippedSkill {
+pub(crate) struct SkippedSkill {
     pub name: String,
     pub reason: String,
     pub source_url: String,
 }
 
 /// Whether a lock entry should be skipped (not enough info to check).
-pub const fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
+pub(crate) const fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
     entry.skill_folder_hash.is_empty() || entry.skill_path.is_none()
 }
 
 /// Human-readable skip reason for a lock entry.
-pub fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
+pub(crate) fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
     if entry.source_type == "local" {
         return "Local path".to_owned();
     }
@@ -45,7 +45,7 @@ pub fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
 }
 
 /// Print skipped skills with manual update instructions.
-pub fn print_skipped_skills(skipped: &[SkippedSkill]) {
+pub(crate) fn print_skipped_skills(skipped: &[SkippedSkill]) {
     if skipped.is_empty() {
         return;
     }

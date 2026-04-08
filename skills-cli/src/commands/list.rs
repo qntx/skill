@@ -15,7 +15,7 @@ use crate::ui::{self, BOLD, CYAN, DIM, RESET, YELLOW};
 
 /// Arguments for the `list` command.
 #[derive(Args)]
-pub struct ListArgs {
+pub(crate) struct ListArgs {
     /// List global skills (default: project).
     #[arg(short, long)]
     pub global: bool,
@@ -30,7 +30,7 @@ pub struct ListArgs {
 }
 
 /// Run the list command.
-pub async fn run(args: ListArgs) -> Result<()> {
+pub(crate) async fn run(args: ListArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
 

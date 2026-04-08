@@ -10,12 +10,12 @@ use clap_complete::Shell;
 
 /// Arguments for the `completions` command.
 #[derive(Args)]
-pub struct CompletionsArgs {
+pub(crate) struct CompletionsArgs {
     /// Target shell (bash, zsh, fish, powershell).
     pub shell: Shell,
 }
 
 /// Generate shell completions and write to stdout.
-pub fn run(args: &CompletionsArgs, cmd: &mut clap::Command) {
+pub(crate) fn run(args: &CompletionsArgs, cmd: &mut clap::Command) {
     clap_complete::generate(args.shell, cmd, "skills", &mut io::stdout());
 }

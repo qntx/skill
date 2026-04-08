@@ -10,13 +10,13 @@ use crate::ui::{DIM, RESET, TEXT};
 
 /// Arguments for the `init` command.
 #[derive(Args)]
-pub struct InitArgs {
+pub(crate) struct InitArgs {
     /// Skill name (defaults to current directory name).
     pub name: Option<String>,
 }
 
 /// Run the init command.
-pub fn run(args: &InitArgs) -> Result<()> {
+pub(crate) fn run(args: &InitArgs) -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let cwd_name = cwd
         .file_name()
