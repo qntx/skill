@@ -63,7 +63,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: Some(resolved),
             git_ref: None,
             skill_filter: None,
-            is_private: None,
         };
     }
 
@@ -80,7 +79,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: Some(git_ref.to_owned()),
             skill_filter: None,
-            is_private: None,
         };
     }
 
@@ -96,7 +94,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: Some(git_ref.to_owned()),
             skill_filter: None,
-            is_private: None,
         };
     }
 
@@ -111,7 +108,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: None,
-            is_private: None,
         };
     }
 
@@ -130,7 +126,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
                 local_path: None,
                 git_ref: Some(git_ref.to_owned()),
                 skill_filter: None,
-                is_private: None,
             };
         }
     }
@@ -149,7 +144,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
                 local_path: None,
                 git_ref: Some(git_ref.to_owned()),
                 skill_filter: None,
-                is_private: None,
             };
         }
     }
@@ -165,7 +159,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
                 local_path: None,
                 git_ref: None,
                 skill_filter: None,
-                is_private: None,
             };
         }
     }
@@ -186,7 +179,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: Some(skill_filter.to_owned()),
-            is_private: None,
         };
     }
 
@@ -206,7 +198,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: None,
-            is_private: None,
         };
     }
 
@@ -219,7 +210,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
             local_path: None,
             git_ref: None,
             skill_filter: None,
-            is_private: None,
         };
     }
 
@@ -231,7 +221,6 @@ pub fn parse_source(input: &str) -> ParsedSource {
         local_path: None,
         git_ref: None,
         skill_filter: None,
-        is_private: None,
     }
 }
 
@@ -328,98 +317,44 @@ fn is_well_known_url(input: &str) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("git"))
 }
 
-// Compiled regex patterns (cached via LazyLock)
-
-/// Regex for GitHub tree URLs with subpath.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn github_tree_with_path_re() -> &'static Regex {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").expect("valid regex")
-    });
-    &RE
+/// Declare a lazily-compiled static regex with a doc comment.
+macro_rules! static_regex {
+    ($($(#[doc = $doc:literal])* $name:ident => $pattern:literal;)*) => {
+        $(
+            $(#[doc = $doc])*
+            #[allow(clippy::expect_used, reason = "static regex pattern is known valid at compile time")]
+            fn $name() -> &'static Regex {
+                static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new($pattern).expect("valid regex"));
+                &RE
+            }
+        )*
+    };
 }
 
-/// Regex for GitHub tree URLs without subpath.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn github_tree_re() -> &'static Regex {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").expect("valid regex")
-    });
-    &RE
-}
+static_regex! {
+    /// GitHub tree URL with subpath: `github.com/owner/repo/tree/branch/path`.
+    github_tree_with_path_re => r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)";
 
-/// Regex for GitHub repository URLs.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn github_repo_re() -> &'static Regex {
-    static RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"github\.com/([^/]+)/([^/]+)").expect("valid regex"));
-    &RE
-}
+    /// GitHub tree URL without subpath: `github.com/owner/repo/tree/branch`.
+    github_tree_re => r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$";
 
-/// Regex for GitLab tree URLs with subpath.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn gitlab_tree_with_path_re() -> &'static Regex {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)/(.+)").expect("valid regex")
-    });
-    &RE
-}
+    /// GitHub repository URL: `github.com/owner/repo`.
+    github_repo_re => r"github\.com/([^/]+)/([^/]+)";
 
-/// Regex for GitLab tree URLs without subpath.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn gitlab_tree_re() -> &'static Regex {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)$").expect("valid regex")
-    });
-    &RE
-}
+    /// GitLab tree URL with subpath: `host/path/-/tree/branch/path`.
+    gitlab_tree_with_path_re => r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)/(.+)";
 
-/// Regex for GitLab repository URLs.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn gitlab_repo_re() -> &'static Regex {
-    static RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("valid regex"));
-    &RE
-}
+    /// GitLab tree URL without subpath: `host/path/-/tree/branch`.
+    gitlab_tree_re => r"^(https?):?//([^/]+)/(.+?)/-/tree/([^/]+)$";
 
-/// Regex for `owner/repo@ref` shorthand.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn at_skill_re() -> &'static Regex {
-    static RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("valid regex"));
-    &RE
-}
+    /// GitLab repository URL: `gitlab.com/path`.
+    gitlab_repo_re => r"gitlab\.com/(.+?)(?:\.git)?/?$";
 
-/// Regex for `owner/repo[/subpath]` shorthand.
-#[allow(
-    clippy::expect_used,
-    reason = "static regex patterns are known valid at compile time"
-)]
-fn shorthand_re() -> &'static Regex {
-    static RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("valid regex"));
-    &RE
+    /// `owner/repo@skill` shorthand.
+    at_skill_re => r"^([^/]+)/([^/@]+)@(.+)$";
+
+    /// `owner/repo[/subpath]` shorthand.
+    shorthand_re => r"^([^/]+)/([^/]+)(?:/(.+))?$";
 }
 
 #[cfg(test)]

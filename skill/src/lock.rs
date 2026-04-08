@@ -137,39 +137,53 @@ pub async fn write_skill_lock(lock: &SkillLockFile) -> Result<()> {
         .map_err(|e| SkillError::io(&path, e))
 }
 
+/// Input for adding or updating a skill in the global lock file.
+///
+/// Timestamps are managed automatically: `installed_at` is preserved on
+/// update, `updated_at` is always set to now.
+#[derive(Debug)]
+pub struct AddLockInput<'a> {
+    /// Skill name (used as the map key).
+    pub name: &'a str,
+    /// Normalized source identifier (e.g. `"owner/repo"`).
+    pub source: &'a str,
+    /// Provider / source type (e.g. `"github"`, `"well-known"`).
+    pub source_type: &'a str,
+    /// Original URL used for installation.
+    pub source_url: &'a str,
+    /// Subpath within the source repo.
+    pub skill_path: Option<&'a str>,
+    /// GitHub tree SHA for the skill folder.
+    pub skill_folder_hash: &'a str,
+    /// Plugin grouping name.
+    pub plugin_name: Option<&'a str>,
+}
+
 /// Add or update a skill entry in the global lock file.
 ///
 /// # Errors
 ///
 /// Returns an error on I/O or serialization failure.
-pub async fn add_skill_to_lock(
-    skill_name: &str,
-    source: &str,
-    source_type: &str,
-    source_url: &str,
-    skill_path: Option<&str>,
-    skill_folder_hash: &str,
-    plugin_name: Option<&str>,
-) -> Result<()> {
+pub async fn add_skill_to_lock(input: &AddLockInput<'_>) -> Result<()> {
     let mut lock = read_skill_lock().await?;
     let now = iso_now();
 
     let installed_at = lock
         .skills
-        .get(skill_name)
+        .get(input.name)
         .map_or_else(|| now.clone(), |e| e.installed_at.clone());
 
     lock.skills.insert(
-        skill_name.to_owned(),
+        input.name.to_owned(),
         SkillLockEntry {
-            source: source.to_owned(),
-            source_type: source_type.to_owned(),
-            source_url: source_url.to_owned(),
-            skill_path: skill_path.map(String::from),
-            skill_folder_hash: skill_folder_hash.to_owned(),
+            source: input.source.to_owned(),
+            source_type: input.source_type.to_owned(),
+            source_url: input.source_url.to_owned(),
+            skill_path: input.skill_path.map(String::from),
+            skill_folder_hash: input.skill_folder_hash.to_owned(),
             installed_at,
             updated_at: now,
-            plugin_name: plugin_name.map(String::from),
+            plugin_name: input.plugin_name.map(String::from),
         },
     );
 
@@ -292,23 +306,43 @@ pub fn get_github_token() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Typed response from the GitHub Git Trees API (`GET /repos/:owner/:repo/git/trees/:sha`).
+#[cfg(feature = "network")]
+#[derive(Deserialize)]
+struct GitTreeResponse {
+    /// Root tree SHA (used when `folder_path` is empty).
+    sha: Option<String>,
+    /// Flat list of tree entries (recursive mode).
+    #[serde(default)]
+    tree: Vec<GitTreeEntry>,
+}
+
+/// A single entry within a GitHub git tree listing.
+#[cfg(feature = "network")]
+#[derive(Deserialize)]
+struct GitTreeEntry {
+    /// Relative path of this entry within the repository.
+    path: String,
+    /// Object SHA-1 hash.
+    sha: Option<String>,
+    /// Git object type (`"blob"`, `"tree"`, or `"commit"`).
+    #[serde(rename = "type")]
+    entry_type: String,
+}
+
 /// Fetch the tree SHA for a skill folder via the GitHub Trees API.
 ///
 /// # Errors
 ///
 /// Returns an error on network failure.
 #[cfg(feature = "network")]
-#[allow(
-    clippy::excessive_nesting,
-    reason = "nested branch × tree entry iteration"
-)]
 pub async fn fetch_skill_folder_hash(
     owner_repo: &str,
     skill_path: &str,
     token: Option<&str>,
 ) -> Result<Option<String>> {
-    let mut folder_path = skill_path.replace('\\', "/");
-    folder_path = folder_path
+    let folder_path = skill_path
+        .replace('\\', "/")
         .trim_end_matches("/SKILL.md")
         .trim_end_matches("SKILL.md")
         .trim_end_matches('/')
@@ -342,29 +376,23 @@ pub async fn fetch_skill_folder_hash(
             _ => continue,
         };
 
-        let data: serde_json::Value = match resp.json().await {
+        let data: GitTreeResponse = match resp.json().await {
             Ok(v) => v,
             Err(_) => continue,
         };
 
         if folder_path.is_empty() {
-            return Ok(data.get("sha").and_then(|v| v.as_str()).map(String::from));
+            return Ok(data.sha);
         }
 
-        if let Some(tree) = data.get("tree").and_then(|v| v.as_array()) {
-            for entry in tree {
-                let is_tree = entry
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|t| t == "tree");
-                let path_match = entry
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|p| p == folder_path);
-                if is_tree && path_match {
-                    return Ok(entry.get("sha").and_then(|v| v.as_str()).map(String::from));
-                }
-            }
+        let found = data
+            .tree
+            .iter()
+            .find(|e| e.entry_type == "tree" && e.path == folder_path)
+            .and_then(|e| e.sha.clone());
+
+        if found.is_some() {
+            return Ok(found);
         }
     }
 

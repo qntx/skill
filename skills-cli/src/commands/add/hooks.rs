@@ -14,9 +14,9 @@ pub(super) fn send_telemetry(
     selected_skills: &[Skill],
     target_agents: &[AgentId],
     scope: InstallScope,
+    is_private: Option<bool>,
 ) {
-    // Skip telemetry for private repos (matching TS behavior)
-    if parsed.is_private.unwrap_or(false) {
+    if is_private.unwrap_or(false) {
         return;
     }
 
@@ -90,28 +90,27 @@ pub(super) fn send_wellknown_telemetry(
 
 /// Check if the source is a private GitHub repository.
 ///
-/// Sets `parsed.is_private` and prompts the user when private.
+/// Returns `Some(true)` for private repos, `Some(false)` for public,
+/// `None` if unknown. Prompts the user for confirmation when private.
 pub(super) async fn prompt_security_advisory(
-    parsed: &mut skill::types::ParsedSource,
+    parsed: &skill::types::ParsedSource,
     yes: bool,
-) -> Result<()> {
+) -> Result<Option<bool>> {
     if parsed.source_type != SourceType::Github {
-        return Ok(());
+        return Ok(None);
     }
 
     let Some(owner_repo) = skill::source::get_owner_repo(parsed) else {
-        return Ok(());
+        return Ok(None);
     };
     let Some((owner, repo)) = skill::source::parse_owner_repo(&owner_repo) else {
-        return Ok(());
+        return Ok(None);
     };
 
     let is_private = skill::lock::is_repo_private(&owner, &repo)
         .await
         .ok()
         .flatten();
-
-    parsed.is_private = is_private;
 
     if is_private == Some(true) && !yes {
         println!();
@@ -135,7 +134,7 @@ pub(super) async fn prompt_security_advisory(
         }
     }
 
-    Ok(())
+    Ok(is_private)
 }
 
 /// Prompt user to install the find-skills skill on first use.
@@ -231,15 +230,15 @@ pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills
         .unwrap_or_default();
 
         drop(
-            skill::lock::add_skill_to_lock(
-                &s.name,
-                &owner_repo,
-                &parsed.source_type.to_string(),
-                &parsed.url,
-                skill_path.as_deref(),
-                &hash,
-                s.plugin_name.as_deref(),
-            )
+            skill::lock::add_skill_to_lock(&skill::lock::AddLockInput {
+                name: &s.name,
+                source: &owner_repo,
+                source_type: &parsed.source_type.to_string(),
+                source_url: &parsed.url,
+                skill_path: skill_path.as_deref(),
+                skill_folder_hash: &hash,
+                plugin_name: s.plugin_name.as_deref(),
+            })
             .await,
         );
     }

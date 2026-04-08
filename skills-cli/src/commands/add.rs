@@ -148,7 +148,7 @@ async fn run_single_source(
 
     // Parse and display source
     spinner.start("Parsing source...");
-    let mut parsed = manager.parse_source(source);
+    let parsed = manager.parse_source(source);
     let source_display = if parsed.source_type == SourceType::Local {
         parsed
             .local_path
@@ -173,7 +173,7 @@ async fn run_single_source(
         args.skill.get_or_insert_with(Vec::new).push(filter.clone());
     }
 
-    hooks::prompt_security_advisory(&mut parsed, args.yes).await?;
+    let is_private = hooks::prompt_security_advisory(&parsed, args.yes).await?;
 
     if parsed.source_type == SourceType::WellKnown {
         return handle_wellknown_source(&parsed, args, manager, cwd).await;
@@ -227,7 +227,7 @@ async fn run_single_source(
     // Start audit fetch in parallel before user selection (matching TS pattern)
     let owner_repo_for_audit = skill::source::get_owner_repo(&parsed);
     let skill_slugs: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
-    let audit_handle = if parsed.is_private.unwrap_or(false) {
+    let audit_handle = if is_private.unwrap_or(false) {
         None
     } else {
         let source_id = owner_repo_for_audit.clone().unwrap_or_default();
@@ -294,7 +294,7 @@ async fn run_single_source(
         hooks::update_local_lock_file(&parsed, &selected_skills, cwd).await;
     }
 
-    hooks::send_telemetry(&parsed, &selected_skills, &target_agents, scope);
+    hooks::send_telemetry(&parsed, &selected_skills, &target_agents, scope, is_private);
 
     println!();
     let _ = cliclack::outro(format!(
@@ -367,15 +367,15 @@ async fn handle_wellknown_source(
     output::print_install_results(&outcomes, cwd);
 
     for wk in &wk_skills {
-        let _ = skill::lock::add_skill_to_lock(
-            &wk.remote.install_name,
-            &wk.remote.source_identifier,
-            "well-known",
-            &wk.remote.source_url,
-            None,
-            "",
-            None,
-        )
+        let _ = skill::lock::add_skill_to_lock(&skill::lock::AddLockInput {
+            name: &wk.remote.install_name,
+            source: &wk.remote.source_identifier,
+            source_type: "well-known",
+            source_url: &wk.remote.source_url,
+            skill_path: None,
+            skill_folder_hash: "",
+            plugin_name: None,
+        })
         .await;
     }
 

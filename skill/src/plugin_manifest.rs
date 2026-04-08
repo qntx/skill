@@ -69,7 +69,7 @@ fn is_valid_relative_path(path: &str) -> bool {
     clippy::excessive_nesting,
     reason = "manifest × plugin × skill path iteration"
 )]
-pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
+pub(crate) async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
     let mut search_dirs = Vec::new();
 
     let add_plugin_skill_paths =
@@ -149,7 +149,7 @@ pub async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
     clippy::excessive_nesting,
     reason = "manifest × plugin × skill path iteration"
 )]
-pub async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
+pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
     let mut groupings = HashMap::new();
 
     // Try marketplace.json (multi-plugin catalog).
