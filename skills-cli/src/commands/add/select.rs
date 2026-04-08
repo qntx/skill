@@ -6,20 +6,7 @@ use miette::{IntoDiagnostic, Result, miette};
 use skill::SkillManager;
 use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 
-use crate::ui::{self, DIM, RESET};
-
-pub(super) fn kebab_to_title(s: &str) -> String {
-    s.split('-')
-        .map(|w| {
-            let mut c = w.chars();
-            c.next().map_or_else(String::new, |first| {
-                let upper: String = first.to_uppercase().collect();
-                upper + c.as_str()
-            })
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
+use crate::ui::{self, DIM, RESET, kebab_to_title};
 
 pub(super) fn truncate_hint(s: &str, max: usize) -> String {
     if s.len() <= max {

@@ -8,8 +8,7 @@ use skill::telemetry::AuditResponse;
 use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 
 use super::install::SkillInstallOutcome;
-use super::select::kebab_to_title;
-use crate::ui::{self, DIM, GREEN, RESET, YELLOW};
+use crate::ui::{self, DIM, GREEN, RESET, YELLOW, kebab_to_title};
 
 /// Print a pre-confirmation installation summary box.
 ///

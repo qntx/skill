@@ -15,7 +15,7 @@ pub(crate) use select::select_agents;
 use skill::SkillManager;
 use skill::types::{AgentId, DiscoverOptions, InstallOptions, InstallScope, Skill, SourceType};
 
-use crate::ui::{self, DIM, GREEN, RESET, TEXT, YELLOW};
+use crate::ui::{self, DIM, GREEN, RESET, TEXT, YELLOW, kebab_to_title};
 
 /// Arguments for the `add` command.
 #[derive(Args)]
@@ -404,7 +404,7 @@ fn print_skill_list(skills: &[Skill]) {
     }
 
     for (group, items) in &grouped {
-        let title = select::kebab_to_title(group);
+        let title = kebab_to_title(group);
         println!("\x1b[1m{title}\x1b[0m");
         for s in items {
             let _ = cliclack::log::remark(format!("  \x1b[36m{}\x1b[0m", s.name));

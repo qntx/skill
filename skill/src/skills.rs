@@ -346,7 +346,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_frontmatter() {
+    fn extract_frontmatter_basic() {
         let content = "---\nname: test\ndescription: hello\n---\n# Body";
         let (fm, body) = extract_frontmatter(content).expect("should parse");
         assert_eq!(fm, "name: test\ndescription: hello");
@@ -354,14 +354,85 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_frontmatter_missing() {
+    fn extract_frontmatter_missing() {
         assert!(extract_frontmatter("no frontmatter here").is_none());
     }
 
     #[test]
-    fn test_subpath_safe() {
+    fn extract_frontmatter_leading_whitespace() {
+        let content = "  \n---\nname: x\n---\nbody";
+        let (fm, _body) = extract_frontmatter(content).expect("should handle leading whitespace");
+        assert_eq!(fm, "name: x");
+    }
+
+    #[test]
+    fn extract_frontmatter_no_body() {
+        let content = "---\nname: x\n---";
+        let (fm, body) = extract_frontmatter(content).expect("should parse without body");
+        assert_eq!(fm, "name: x");
+        assert!(body.is_empty());
+    }
+
+    #[test]
+    fn extract_frontmatter_empty_frontmatter() {
+        let content = "---\n---\nbody";
+        let (fm, _body) = extract_frontmatter(content).expect("should parse empty frontmatter");
+        assert!(fm.is_empty());
+    }
+
+    #[test]
+    fn extract_frontmatter_no_closing() {
+        assert!(extract_frontmatter("---\nname: x\nno closing").is_none());
+    }
+
+    #[test]
+    fn subpath_safe_valid() {
         let base = Path::new("/tmp/repo");
         assert!(is_subpath_safe(base, "skills/my-skill"));
+    }
+
+    #[test]
+    fn subpath_safe_traversal_blocked() {
+        let base = Path::new("/tmp/repo");
         assert!(!is_subpath_safe(base, "../../etc/passwd"));
+    }
+
+    #[tokio::test]
+    async fn parse_skill_md_valid() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let skill_md = dir.path().join("SKILL.md");
+        tokio::fs::write(
+            &skill_md,
+            "---\nname: test-skill\ndescription: A test skill\n---\n# Instructions\nDo things.",
+        )
+        .await
+        .unwrap();
+
+        let result = parse_skill_md(&skill_md, false).await.unwrap();
+        let skill = result.expect("should parse valid SKILL.md");
+        assert_eq!(skill.name, "test-skill");
+        assert_eq!(skill.description, "A test skill");
+        assert!(skill.raw_content.is_some());
+    }
+
+    #[tokio::test]
+    async fn parse_skill_md_missing_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let skill_md = dir.path().join("SKILL.md");
+        tokio::fs::write(&skill_md, "---\ndescription: no name\n---\nbody")
+            .await
+            .unwrap();
+
+        let result = parse_skill_md(&skill_md, false).await.unwrap();
+        assert!(result.is_none(), "should return None when name is missing");
+    }
+
+    #[tokio::test]
+    async fn parse_skill_md_not_found() {
+        let result = parse_skill_md(Path::new("/nonexistent/SKILL.md"), false).await;
+        assert!(
+            result.unwrap().is_none(),
+            "should return Ok(None) for missing file"
+        );
     }
 }

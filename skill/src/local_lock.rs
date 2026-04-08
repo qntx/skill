@@ -192,3 +192,166 @@ async fn collect_files(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_file_serialization_roundtrip() {
+        let mut lock = LocalSkillLockFile::empty();
+        lock.skills.insert(
+            "my-skill".to_owned(),
+            LocalSkillLockEntry {
+                source: "owner/repo".to_owned(),
+                source_type: "github".to_owned(),
+                computed_hash: "abc123".to_owned(),
+            },
+        );
+
+        let json = serde_json::to_string_pretty(&lock).unwrap();
+        let parsed: LocalSkillLockFile = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.skills.len(), 1);
+        let entry = &parsed.skills["my-skill"];
+        assert_eq!(entry.source, "owner/repo");
+        assert_eq!(entry.source_type, "github");
+        assert_eq!(entry.computed_hash, "abc123");
+    }
+
+    #[test]
+    fn lock_file_btreemap_deterministic_order() {
+        let mut lock = LocalSkillLockFile::empty();
+        lock.skills.insert(
+            "z-skill".to_owned(),
+            LocalSkillLockEntry {
+                source: "z".to_owned(),
+                source_type: "github".to_owned(),
+                computed_hash: String::new(),
+            },
+        );
+        lock.skills.insert(
+            "a-skill".to_owned(),
+            LocalSkillLockEntry {
+                source: "a".to_owned(),
+                source_type: "github".to_owned(),
+                computed_hash: String::new(),
+            },
+        );
+
+        let json = serde_json::to_string(&lock).unwrap();
+        let a_pos = json.find("a-skill").unwrap();
+        let z_pos = json.find("z-skill").unwrap();
+        assert!(a_pos < z_pos, "BTreeMap should produce sorted output");
+    }
+
+    #[test]
+    fn lock_file_camel_case_keys() {
+        let lock = LocalSkillLockFile::empty();
+        let json = serde_json::to_string(&lock).unwrap();
+        assert!(json.contains("\"version\""));
+        assert!(!json.contains("\"Version\""));
+    }
+
+    #[tokio::test]
+    async fn read_write_lock_roundtrip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut lock = LocalSkillLockFile::empty();
+        lock.skills.insert(
+            "test".to_owned(),
+            LocalSkillLockEntry {
+                source: "src".to_owned(),
+                source_type: "local".to_owned(),
+                computed_hash: "hash".to_owned(),
+            },
+        );
+
+        write_local_lock(&lock, dir.path()).await.unwrap();
+        let read_back = read_local_lock(dir.path()).await.unwrap();
+
+        assert_eq!(read_back.skills.len(), 1);
+        assert_eq!(read_back.skills["test"].source, "src");
+    }
+
+    #[tokio::test]
+    async fn read_missing_lock_returns_empty() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lock = read_local_lock(dir.path()).await.unwrap();
+        assert!(lock.skills.is_empty());
+        assert_eq!(lock.version, 1);
+    }
+
+    #[tokio::test]
+    async fn compute_hash_deterministic() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        tokio::fs::write(dir.path().join("SKILL.md"), "# test")
+            .await
+            .unwrap();
+        tokio::fs::write(dir.path().join("extra.txt"), "data")
+            .await
+            .unwrap();
+
+        let hash1 = compute_skill_folder_hash(dir.path()).await.unwrap();
+        let hash2 = compute_skill_folder_hash(dir.path()).await.unwrap();
+
+        assert_eq!(hash1, hash2, "same content should produce same hash");
+        assert_eq!(hash1.len(), 64, "SHA-256 hex should be 64 chars");
+    }
+
+    #[tokio::test]
+    async fn compute_hash_changes_with_content() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        tokio::fs::write(dir.path().join("SKILL.md"), "# v1")
+            .await
+            .unwrap();
+        let hash1 = compute_skill_folder_hash(dir.path()).await.unwrap();
+
+        tokio::fs::write(dir.path().join("SKILL.md"), "# v2")
+            .await
+            .unwrap();
+        let hash2 = compute_skill_folder_hash(dir.path()).await.unwrap();
+
+        assert_ne!(
+            hash1, hash2,
+            "different content should produce different hash"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_and_remove_lock_entry() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        add_skill_to_local_lock(
+            "foo",
+            LocalSkillLockEntry {
+                source: "s".to_owned(),
+                source_type: "t".to_owned(),
+                computed_hash: "h".to_owned(),
+            },
+            dir.path(),
+        )
+        .await
+        .unwrap();
+
+        let lock = read_local_lock(dir.path()).await.unwrap();
+        assert!(lock.skills.contains_key("foo"));
+
+        let removed = remove_skill_from_local_lock("foo", dir.path())
+            .await
+            .unwrap();
+        assert!(removed);
+
+        let lock = read_local_lock(dir.path()).await.unwrap();
+        assert!(lock.skills.is_empty());
+    }
+
+    #[tokio::test]
+    async fn remove_nonexistent_returns_false() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let removed = remove_skill_from_local_lock("nope", dir.path())
+            .await
+            .unwrap();
+        assert!(!removed);
+    }
+}

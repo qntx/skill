@@ -164,8 +164,21 @@ pub(crate) fn shorten_path_with_cwd(path: &std::path::Path, cwd: &std::path::Pat
     path.display().to_string()
 }
 
-/// Format items as `"a, b, c"`, truncating with `"+N more"` when needed.
-///
+/// Convert `kebab-case` to `Title Case`.
+#[must_use]
+pub(crate) fn kebab_to_title(s: &str) -> String {
+    s.split('-')
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map_or_else(String::new, |first| {
+                let upper: String = first.to_uppercase().collect();
+                upper + c.as_str()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Matches the `TypeScript` `formatList(items, maxShow = 5)` behaviour.
 #[must_use]
 pub(crate) fn format_list(items: &[String]) -> String {

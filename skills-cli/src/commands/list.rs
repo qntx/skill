@@ -11,7 +11,7 @@ use miette::{IntoDiagnostic, Result};
 use skill::SkillManager;
 use skill::types::{AgentId, InstallScope, ListOptions};
 
-use crate::ui::{self, BOLD, CYAN, DIM, RESET, YELLOW};
+use crate::ui::{self, BOLD, CYAN, DIM, RESET, YELLOW, kebab_to_title};
 
 /// Arguments for the `list` command.
 #[derive(Args)]
@@ -156,16 +156,7 @@ pub(crate) async fn run(args: ListArgs) -> Result<()> {
 
     if has_groups {
         for (plugin, skills) in &grouped {
-            // Convert kebab-case to Title Case
-            let title: String = plugin
-                .split('-')
-                .map(|w| {
-                    let mut c = w.chars();
-                    c.next()
-                        .map_or_else(String::new, |f| f.to_uppercase().to_string() + c.as_str())
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
+            let title = kebab_to_title(plugin);
 
             println!("{BOLD}{title}{RESET}");
             for skill_item in skills {
