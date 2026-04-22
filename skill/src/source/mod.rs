@@ -7,24 +7,21 @@
 //!
 //! - `regex`    — compiled regex patterns and classification helpers
 //! - `fragment` — `#ref[@filter]` parsing for ref-aware installs
+//! - `matchers` — individual URL-shape matchers composed by [`parse_source`]
 //!
 //! The public API is this module's [`parse_source`], [`get_owner_repo`],
 //! [`parse_owner_repo`], and [`sanitize_subpath`].
 
 mod fragment;
+mod matchers;
 mod regex;
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::LazyLock;
 
 use ::regex::Regex;
 
 use self::fragment::FragmentRef;
-use self::regex::{
-    at_skill_re, github_repo_re, github_tree_re, github_tree_with_path_re, gitlab_repo_re,
-    gitlab_tree_re, gitlab_tree_with_path_re, is_local_path, is_well_known_url, shorthand_re,
-};
 use crate::error::{Result, SkillError};
 use crate::types::{ParsedSource, SourceType};
 
@@ -86,15 +83,31 @@ pub fn parse_source(input: &str) -> ParsedSource {
     parsed
 }
 
+/// Ordered pipeline of matchers.  The first matcher to return `Some` wins.
+type Matcher = fn(&str) -> Option<ParsedSource>;
+
+/// Matchers are probed in this order; every URL shape is mutually exclusive
+/// in practice, so the first successful match is the right answer.
+const MATCHERS: &[Matcher] = &[
+    matchers::try_local_path,
+    matchers::try_github_tree_with_path,
+    matchers::try_github_tree,
+    matchers::try_github_repo,
+    matchers::try_gitlab_tree_with_path,
+    matchers::try_gitlab_tree,
+    matchers::try_gitlab_repo,
+    matchers::try_at_skill,
+    matchers::try_shorthand,
+    matchers::try_well_known,
+];
+
 /// Parse a source that has already had any `#fragment` stripped.
 ///
-/// Ordered match branches: aliases → prefix shorthands → local paths →
-/// GitHub/GitLab (tree > tree-without-path > bare repo) → shorthands →
-/// well-known URL → generic git URL fallback.
-#[allow(
-    clippy::too_many_lines,
-    reason = "sequential match arms for different source formats"
-)]
+/// Resolution order:
+///
+/// 1. Alias lookup and `github:` / `gitlab:` prefix stripping.
+/// 2. Delegate to [`MATCHERS`] in order — the first matcher to succeed wins.
+/// 3. Fall back to a generic `Git` source if nothing matched.
 fn parse_fragment_free(input: &str) -> ParsedSource {
     let mut input = input.to_owned();
 
@@ -110,155 +123,10 @@ fn parse_fragment_free(input: &str) -> ParsedSource {
         return parse_fragment_free(&format!("https://gitlab.com/{rest}"));
     }
 
-    if is_local_path(&input) {
-        let resolved = std::path::absolute(Path::new(&input))
-            .unwrap_or_else(|_| Path::new(&input).to_path_buf());
-        return ParsedSource {
-            source_type: SourceType::Local,
-            url: resolved.to_string_lossy().into_owned(),
-            subpath: None,
-            local_path: Some(resolved),
-            git_ref: None,
-            skill_filter: None,
-        };
-    }
-
-    if let Some(caps) = github_tree_with_path_re().captures(&input) {
-        let owner = &caps[1];
-        let repo = &caps[2];
-        let git_ref = &caps[3];
-        let subpath = &caps[4];
-        return ParsedSource {
-            source_type: SourceType::Github,
-            url: format!("https://github.com/{owner}/{repo}.git"),
-            subpath: Some(sanitize_subpath(subpath).unwrap_or_else(|_| subpath.to_owned())),
-            local_path: None,
-            git_ref: Some(git_ref.to_owned()),
-            skill_filter: None,
-        };
-    }
-
-    if let Some(caps) = github_tree_re().captures(&input) {
-        let owner = &caps[1];
-        let repo = &caps[2];
-        let git_ref = &caps[3];
-        return ParsedSource {
-            source_type: SourceType::Github,
-            url: format!("https://github.com/{owner}/{repo}.git"),
-            subpath: None,
-            local_path: None,
-            git_ref: Some(git_ref.to_owned()),
-            skill_filter: None,
-        };
-    }
-
-    if let Some(caps) = github_repo_re().captures(&input) {
-        let owner = &caps[1];
-        let repo = caps[2].trim_end_matches(".git");
-        return ParsedSource {
-            source_type: SourceType::Github,
-            url: format!("https://github.com/{owner}/{repo}.git"),
-            subpath: None,
-            local_path: None,
-            git_ref: None,
-            skill_filter: None,
-        };
-    }
-
-    if let Some(caps) = gitlab_tree_with_path_re().captures(&input) {
-        let protocol = &caps[1];
-        let hostname = &caps[2];
-        let repo_path = caps[3].trim_end_matches(".git");
-        let git_ref = &caps[4];
-        let subpath = &caps[5];
-        if hostname != "github.com" {
-            return ParsedSource {
-                source_type: SourceType::Gitlab,
-                url: format!("{protocol}://{hostname}/{repo_path}.git"),
-                subpath: Some(sanitize_subpath(subpath).unwrap_or_else(|_| subpath.to_owned())),
-                local_path: None,
-                git_ref: Some(git_ref.to_owned()),
-                skill_filter: None,
-            };
+    for matcher in MATCHERS {
+        if let Some(parsed) = matcher(&input) {
+            return parsed;
         }
-    }
-
-    if let Some(caps) = gitlab_tree_re().captures(&input) {
-        let protocol = &caps[1];
-        let hostname = &caps[2];
-        let repo_path = caps[3].trim_end_matches(".git");
-        let git_ref = &caps[4];
-        if hostname != "github.com" {
-            return ParsedSource {
-                source_type: SourceType::Gitlab,
-                url: format!("{protocol}://{hostname}/{repo_path}.git"),
-                subpath: None,
-                local_path: None,
-                git_ref: Some(git_ref.to_owned()),
-                skill_filter: None,
-            };
-        }
-    }
-
-    if let Some(caps) = gitlab_repo_re().captures(&input) {
-        let repo_path = &caps[1];
-        if repo_path.contains('/') {
-            return ParsedSource {
-                source_type: SourceType::Gitlab,
-                url: format!("https://gitlab.com/{repo_path}.git"),
-                subpath: None,
-                local_path: None,
-                git_ref: None,
-                skill_filter: None,
-            };
-        }
-    }
-
-    if let Some(caps) = at_skill_re().captures(&input)
-        && !input.contains(':')
-        && !input.starts_with('.')
-        && !input.starts_with('/')
-    {
-        let owner = &caps[1];
-        let repo = &caps[2];
-        let skill_filter = &caps[3];
-        return ParsedSource {
-            source_type: SourceType::Github,
-            url: format!("https://github.com/{owner}/{repo}.git"),
-            subpath: None,
-            local_path: None,
-            git_ref: None,
-            skill_filter: Some(skill_filter.to_owned()),
-        };
-    }
-
-    if let Some(caps) = shorthand_re().captures(&input)
-        && !input.contains(':')
-        && !input.starts_with('.')
-        && !input.starts_with('/')
-    {
-        let owner = &caps[1];
-        let repo = &caps[2];
-        let subpath = caps.get(3).map(|m| m.as_str().to_owned());
-        return ParsedSource {
-            source_type: SourceType::Github,
-            url: format!("https://github.com/{owner}/{repo}.git"),
-            subpath: subpath.map(|sp| sanitize_subpath(&sp).unwrap_or(sp)),
-            local_path: None,
-            git_ref: None,
-            skill_filter: None,
-        };
-    }
-
-    if is_well_known_url(&input) {
-        return ParsedSource {
-            source_type: SourceType::WellKnown,
-            url: input,
-            subpath: None,
-            local_path: None,
-            git_ref: None,
-            skill_filter: None,
-        };
     }
 
     ParsedSource {

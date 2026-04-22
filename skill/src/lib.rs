@@ -52,6 +52,7 @@ pub mod skills;
 pub mod source;
 pub mod telemetry;
 pub mod types;
+pub(crate) mod util;
 
 pub use error::{Result, SkillError};
 pub use manager::SkillManager;

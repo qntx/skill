@@ -11,8 +11,8 @@ use crate::error::Result;
 use crate::installer;
 use crate::providers::ProviderRegistry;
 use crate::types::{
-    AgentId, DiscoverOptions, InstallOptions, InstallResult, InstalledSkill, ListOptions,
-    ParsedSource, RemoveOptions, Skill,
+    AgentConfig, AgentId, DiscoverOptions, InstallOptions, InstallResult, InstallScope,
+    InstalledSkill, ListOptions, ParsedSource, RemoveOptions, Skill,
 };
 
 /// Configuration for building a [`SkillManager`].
@@ -218,10 +218,6 @@ impl SkillManager {
     /// # Errors
     ///
     /// Returns an error on I/O failure.
-    #[allow(
-        clippy::excessive_nesting,
-        reason = "skill × agent × path cleanup iteration"
-    )]
     pub async fn remove_skills(
         &self,
         skill_names: &[String],
@@ -232,69 +228,21 @@ impl SkillManager {
             .clone()
             .unwrap_or_else(|| self.cwd().into_owned());
         let scope = options.scope;
+        let target_agents: Vec<AgentId> = if options.agents.is_empty() {
+            self.agents.all_ids()
+        } else {
+            options.agents.clone()
+        };
 
         for name in skill_names {
             let canonical = installer::get_canonical_path(name, scope, &cwd);
-            let sanitized = installer::sanitize_name(name);
+            self.cleanup_agent_paths(name, &target_agents, scope, &canonical, &cwd)
+                .await;
 
-            let target_agents: Vec<AgentId> = if options.agents.is_empty() {
-                self.agents.all_ids()
-            } else {
-                options.agents.clone()
-            };
-
-            for agent_id in &target_agents {
-                if let Some(agent) = self.agents.get(agent_id) {
-                    // Collect all paths that might contain this skill for
-                    // the agent, including the "native" directory path to
-                    // clean up legacy symlinks (matches TS behavior).
-                    let mut paths_to_cleanup = Vec::new();
-
-                    let agent_base = installer::agent_base_dir(agent, &self.agents, scope, &cwd);
-                    paths_to_cleanup.push(agent_base.join(&sanitized));
-
-                    let native_dir = match scope {
-                        crate::types::InstallScope::Global => {
-                            agent.global_skills_dir.as_ref().map(|d| d.join(&sanitized))
-                        }
-                        crate::types::InstallScope::Project => {
-                            Some(cwd.join(&agent.skills_dir).join(&sanitized))
-                        }
-                    };
-                    if let Some(nd) = native_dir
-                        && !paths_to_cleanup.contains(&nd)
-                    {
-                        paths_to_cleanup.push(nd);
-                    }
-
-                    for path in &paths_to_cleanup {
-                        if *path == canonical {
-                            continue;
-                        }
-                        drop(tokio::fs::remove_dir_all(path).await);
-                        drop(tokio::fs::remove_file(path).await);
-                    }
-                }
-            }
-
-            // Only remove canonical if no remaining agents still use it.
-            let all_ids = self.agents.all_ids();
-            let remaining: Vec<&AgentId> = all_ids
-                .iter()
-                .filter(|id| !target_agents.contains(id))
-                .collect();
-
-            let mut still_used = false;
-            for aid in &remaining {
-                if let Some(agent) = self.agents.get(aid)
-                    && installer::is_skill_installed(name, agent, scope, &cwd).await
-                {
-                    still_used = true;
-                    break;
-                }
-            }
-
-            if !still_used {
+            if !self
+                .canonical_still_referenced(name, &target_agents, scope, &cwd)
+                .await
+            {
                 drop(tokio::fs::remove_dir_all(&canonical).await);
                 drop(tokio::fs::remove_file(&canonical).await);
             }
@@ -302,4 +250,75 @@ impl SkillManager {
 
         Ok(())
     }
+
+    /// Delete every agent-specific path that might hold the skill, skipping
+    /// the canonical directory (that deletion is handled separately).
+    async fn cleanup_agent_paths(
+        &self,
+        name: &str,
+        target_agents: &[AgentId],
+        scope: InstallScope,
+        canonical: &Path,
+        cwd: &Path,
+    ) {
+        let sanitized = installer::sanitize_name(name);
+        for agent_id in target_agents {
+            let Some(agent) = self.agents.get(agent_id) else {
+                continue;
+            };
+            let paths = candidate_paths(agent, &self.agents, scope, &sanitized, cwd);
+            for path in paths.into_iter().filter(|p| p != canonical) {
+                drop(tokio::fs::remove_dir_all(&path).await);
+                drop(tokio::fs::remove_file(&path).await);
+            }
+        }
+    }
+
+    /// Check whether any non-targeted agent still references the canonical
+    /// skill directory.
+    async fn canonical_still_referenced(
+        &self,
+        name: &str,
+        target_agents: &[AgentId],
+        scope: InstallScope,
+        cwd: &Path,
+    ) -> bool {
+        for aid in self.agents.all_ids() {
+            if target_agents.contains(&aid) {
+                continue;
+            }
+            if let Some(agent) = self.agents.get(&aid)
+                && installer::is_skill_installed(name, agent, scope, cwd).await
+            {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Every directory an agent may have used for `sanitized` skill name under
+/// `scope`.  Includes both the canonical `agent_base_dir` (which for universal
+/// agents *is* the canonical skills dir) and the "native" agent-specific
+/// directory so legacy symlinks get cleaned up too.
+fn candidate_paths(
+    agent: &AgentConfig,
+    registry: &AgentRegistry,
+    scope: InstallScope,
+    sanitized: &str,
+    cwd: &Path,
+) -> Vec<PathBuf> {
+    let mut paths = Vec::with_capacity(2);
+    paths.push(installer::agent_base_dir(agent, registry, scope, cwd).join(sanitized));
+
+    let native_dir = match scope {
+        InstallScope::Global => agent.global_skills_dir.as_ref().map(|d| d.join(sanitized)),
+        InstallScope::Project => Some(cwd.join(&agent.skills_dir).join(sanitized)),
+    };
+    if let Some(nd) = native_dir
+        && !paths.contains(&nd)
+    {
+        paths.push(nd);
+    }
+    paths
 }

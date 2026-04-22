@@ -5,8 +5,9 @@
 //! runs `skills add` to install the skill. One-shot mode (with query)
 //! prints results and exits.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
 
 use clap::Args;
 use miette::{IntoDiagnostic, Result};
@@ -115,45 +116,39 @@ fn to_fzf_items(skills: &[SearchSkill]) -> Vec<ui::FzfItem> {
 }
 
 /// Run interactive fzf search, returning selected skill info.
+///
+/// The fzf prompt runs on a single thread (`block_in_place` of the outer
+/// tokio runtime), so the cache uses `Rc<RefCell<…>>` instead of
+/// `Arc<Mutex<…>>` — there's nothing to synchronise across threads.
 #[allow(
-    clippy::expect_used,
-    clippy::unwrap_in_result,
     clippy::excessive_nesting,
-    reason = "Mutex::lock only fails if poisoned; nested match arms for parsing"
+    reason = "nested match arms for parsing the selection value"
 )]
 fn run_interactive(
-    cache: &Arc<Mutex<HashMap<String, Vec<SearchSkill>>>>,
+    cache: &Rc<RefCell<HashMap<String, Vec<SearchSkill>>>>,
 ) -> Result<Option<InteractiveResult>> {
-    let cache_ref = Arc::clone(cache);
+    let cache_ref = Rc::clone(cache);
     let result = ui::fzf_search("Search skills:", move |query| {
         if query.len() < 2 {
             return Vec::new();
         }
-
-        #[allow(clippy::expect_used, reason = "Mutex::lock only fails if poisoned")]
-        let items = to_fzf_items(
-            cache_ref
-                .lock()
-                .expect("cache lock")
-                .entry(query.to_owned())
-                .or_insert_with(|| search_api_sync(query)),
-        );
-        items
+        let mut borrow = cache_ref.borrow_mut();
+        let hits = borrow
+            .entry(query.to_owned())
+            .or_insert_with(|| search_api_sync(query));
+        to_fzf_items(hits)
     })
     .into_diagnostic()?;
 
     match result {
-        ui::FzfResult::Selected(value) => {
-            // Parse "owner/repo@skillname" back into components
+        ui::FzfResult::Selected(value) =>
+        {
             #[allow(clippy::option_if_let_else, reason = "if-let-else reads clearer here")]
             if let Some(at_pos) = value.rfind('@') {
                 let pkg = &value[..at_pos];
                 let skill_name = &value[at_pos + 1..];
-
-                #[allow(clippy::expect_used, reason = "Mutex::lock only fails if poisoned")]
                 let slug = cache
-                    .lock()
-                    .expect("cache lock poisoned")
+                    .borrow()
                     .values()
                     .flat_map(|v| v.iter())
                     .find(|s| {
@@ -264,10 +259,14 @@ pub(crate) async fn run(args: FindArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Interactive mode when no query
-    let cache: Arc<Mutex<HashMap<String, Vec<SearchSkill>>>> = Arc::new(Mutex::new(HashMap::new()));
-
-    let selected = tokio::task::block_in_place(|| run_interactive(&cache))?;
+    // Interactive mode when no query.  The cache is scoped to a block so
+    // that the `!Send` `Rc<RefCell<…>>` is dropped *before* any subsequent
+    // `.await`, keeping `run` itself `Send`.
+    let selected = {
+        let cache: Rc<RefCell<HashMap<String, Vec<SearchSkill>>>> =
+            Rc::new(RefCell::new(HashMap::new()));
+        tokio::task::block_in_place(|| run_interactive(&cache))?
+    };
 
     // Telemetry
     let mut props = HashMap::new();

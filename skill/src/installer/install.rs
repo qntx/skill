@@ -1,4 +1,4 @@
-//! Core install operations for local, remote, and well-known skills.
+﻿//! Core install operations for local, remote, and well-known skills.
 
 use std::path::{Path, PathBuf};
 
@@ -70,11 +70,11 @@ fn prepare_install(
     })
 }
 
-/// Finalize a symlink-mode install: create symlink from canonical to agent dir,
-/// falling back to copy if the symlink fails.
-///
-/// Returns `(symlink_ok)` — caller must copy content to `agent_dir` on `false`.
-fn try_symlink_or_return(ctx: &InstallContext) -> Option<InstallResult> {
+/// For global + universal installs, the canonical directory *is* the agent
+/// directory — no symlink step is needed and we can produce the final
+/// [`InstallResult`] directly.  Returns `None` otherwise so the caller
+/// proceeds with symlink creation.
+fn short_circuit_universal_global(ctx: &InstallContext) -> Option<InstallResult> {
     if ctx.scope == InstallScope::Global && ctx.is_universal {
         return Some(InstallResult {
             path: ctx.canonical_dir.clone(),
@@ -154,7 +154,7 @@ pub async fn install_skill_for_agent(
     clean_and_create(&ctx.canonical_dir).await?;
     copy_directory(&skill.path, &ctx.canonical_dir).await?;
 
-    if let Some(result) = try_symlink_or_return(&ctx) {
+    if let Some(result) = short_circuit_universal_global(&ctx) {
         return Ok(result);
     }
 
@@ -195,7 +195,7 @@ pub async fn install_remote_skill_content(
     clean_and_create(&ctx.canonical_dir).await?;
     write_single_skill_md(&ctx.canonical_dir, content).await?;
 
-    if let Some(result) = try_symlink_or_return(&ctx) {
+    if let Some(result) = short_circuit_universal_global(&ctx) {
         return Ok(result);
     }
 
@@ -236,7 +236,7 @@ pub async fn install_wellknown_skill_files<S: ::std::hash::BuildHasher + Clone +
     clean_and_create(&ctx.canonical_dir).await?;
     write_skill_files(&ctx.canonical_dir, files).await?;
 
-    if let Some(result) = try_symlink_or_return(&ctx) {
+    if let Some(result) = short_circuit_universal_global(&ctx) {
         return Ok(result);
     }
 

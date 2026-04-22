@@ -4,6 +4,7 @@ mod hooks;
 mod install;
 mod output;
 mod select;
+mod wellknown;
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -16,9 +17,7 @@ use skill::SkillManager;
 use skill::types::{AgentId, DiscoverOptions, InstallOptions, InstallScope, Skill, SourceType};
 
 use crate::ui::emit;
-use crate::ui::{
-    self, BOLD, CYAN, DIM, GREEN, INTRO_TAG, RED, RESET, TEXT, YELLOW, kebab_to_title,
-};
+use crate::ui::{self, BOLD, CYAN, DIM, GREEN, INTRO_TAG, RED, RESET, YELLOW, kebab_to_title};
 
 /// Arguments for the `add` command.
 #[derive(Args)]
@@ -210,7 +209,7 @@ async fn run_single_source(
     let is_private = hooks::prompt_security_advisory(&parsed, args.yes).await?;
 
     if parsed.source_type == SourceType::WellKnown {
-        return handle_wellknown_source(&parsed, args, manager, cwd).await;
+        return wellknown::run(&parsed, args, manager, cwd).await;
     }
 
     // Clone/resolve source
@@ -329,92 +328,6 @@ async fn run_single_source(
     }
 
     hooks::send_telemetry(&parsed, &selected_skills, &target_agents, scope, is_private);
-
-    println!();
-    emit::outro(format!(
-        "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
-    ));
-
-    Ok(Some(target_agents))
-}
-
-async fn handle_wellknown_source(
-    parsed: &skill::types::ParsedSource,
-    args: &AddArgs,
-    manager: &SkillManager,
-    cwd: &Path,
-) -> Result<Option<Vec<AgentId>>> {
-    use skill::providers::WellKnownProvider;
-
-    let discover_spinner = cliclack::spinner();
-    discover_spinner.start("Discovering skills from well-known endpoint...");
-
-    let provider = WellKnownProvider;
-    let wk_skills = provider
-        .fetch_all_skills(&parsed.url)
-        .await
-        .map_err(|e| miette!("{e}"))?;
-
-    if wk_skills.is_empty() {
-        discover_spinner.stop(format!("{RED}No skills found{RESET}"));
-        emit::outro(format!(
-            "{RED}No skills found at this URL. Make sure the server has a /.well-known/skills/index.json file.{RESET}",
-        ));
-        return Ok(None);
-    }
-
-    discover_spinner.stop(format!(
-        "Found {GREEN}{}{RESET} skill{}",
-        wk_skills.len(),
-        if wk_skills.len() > 1 { "s" } else { "" }
-    ));
-
-    if args.list {
-        println!();
-        for wk in &wk_skills {
-            println!(
-                "  {TEXT}{}{RESET} {DIM}- {}{RESET}",
-                wk.remote.name, wk.remote.description
-            );
-        }
-        println!();
-        return Ok(None);
-    }
-
-    let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
-    let scope = select::resolve_scope(args.global, args.yes, &target_agents, manager)?;
-    let mode = select::resolve_mode(args.copy, args.yes)?;
-
-    let install_opts = InstallOptions {
-        scope,
-        mode,
-        cwd: Some(cwd.to_path_buf()),
-    };
-
-    let install_spinner = cliclack::spinner();
-    install_spinner.start("Installing skills...");
-    let outcomes =
-        install::install_wellknown_skills(&wk_skills, &target_agents, manager, &install_opts).await;
-    install_spinner.stop("Installation complete");
-
-    println!();
-    output::print_install_results(&outcomes, cwd);
-
-    for wk in &wk_skills {
-        let _ = skill::lock::add_skill_to_lock(&skill::lock::AddLockInput {
-            name: &wk.remote.install_name,
-            source: &wk.remote.source_identifier,
-            source_type: "well-known",
-            source_url: &wk.remote.source_url,
-            git_ref: None,
-            skill_path: None,
-            skill_folder_hash: "",
-            plugin_name: None,
-        })
-        .await;
-    }
-
-    hooks::send_wellknown_telemetry(&wk_skills, &target_agents, scope);
 
     println!();
     emit::outro(format!(

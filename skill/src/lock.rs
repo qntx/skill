@@ -191,7 +191,7 @@ pub struct AddLockInput<'a> {
 /// Returns an error on I/O or serialization failure.
 pub async fn add_skill_to_lock(input: &AddLockInput<'_>) -> Result<()> {
     let mut lock = read_skill_lock().await?;
-    let now = iso_now();
+    let now = crate::util::time::iso8601_now();
 
     let installed_at = lock
         .skills
@@ -300,41 +300,4 @@ pub async fn save_selected_agents(agents: &[String]) -> Result<()> {
 pub async fn get_last_selected_agents() -> Result<Option<Vec<String>>> {
     let lock = read_skill_lock().await?;
     Ok(lock.last_selected_agents)
-}
-
-/// ISO 8601 UTC timestamp without external datetime dependencies.
-///
-/// Produces `YYYY-MM-DDTHH:MM:SSZ` matching the TS `new Date().toISOString()`
-/// output (seconds precision is sufficient for lock-file tracking).
-fn iso_now() -> String {
-    let dur = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let total_secs = dur.as_secs();
-
-    // Days / time decomposition (no leap-second handling needed here).
-    let days = total_secs / 86_400;
-    let time_of_day = total_secs % 86_400;
-    let hh = time_of_day / 3_600;
-    let mm = (time_of_day % 3_600) / 60;
-    let ss = time_of_day % 60;
-
-    // Civil date from day count (algorithm: Howard Hinnant's `civil_from_days`).
-    // All arithmetic stays in i64 to avoid wrapping casts.
-    #[allow(
-        clippy::cast_possible_wrap,
-        reason = "u64 days fits in i64 for valid timestamps"
-    )]
-    let z = (days as i64) + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let yr = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let dd = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if month <= 2 { yr + 1 } else { yr };
-
-    format!("{year:04}-{month:02}-{dd:02}T{hh:02}:{mm:02}:{ss:02}Z")
 }

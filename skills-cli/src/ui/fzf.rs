@@ -64,9 +64,9 @@ const fn debounce_delay(query_len: usize) -> u64 {
     clippy::shadow_unrelated,
     reason = "TUI event loop; closure params intentionally shadow outer state"
 )]
-pub(crate) fn fzf_search<F>(message: &str, search_fn: F) -> io::Result<FzfResult>
+pub(crate) fn fzf_search<F>(message: &str, mut search_fn: F) -> io::Result<FzfResult>
 where
-    F: Fn(&str) -> Vec<FzfItem>,
+    F: FnMut(&str) -> Vec<FzfItem>,
 {
     let mut stdout = io::stdout();
     let mut query = String::new();
