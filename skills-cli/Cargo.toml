@@ -11,24 +11,25 @@ name = "skills"
 path = "src/main.rs"
 
 [dependencies]
+# Local workspace crates first, then third-party dependencies sorted alphabetically.
 skill = { workspace = true, features = ["network", "telemetry"] }
 
-tokio = { workspace = true, features = ["full"] }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
-miette = { workspace = true }
 cliclack = { workspace = true }
 crossterm = { workspace = true }
-urlencoding = { workspace = true }
-reqwest = { workspace = true }
 dirs = { workspace = true }
-tempfile = { workspace = true }
 flate2 = { workspace = true }
+miette = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tar = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+urlencoding = { workspace = true }
 zip = { workspace = true }
 
 [lints]

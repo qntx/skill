@@ -7,19 +7,21 @@ repository.workspace = true
 description.workspace = true
 
 [dependencies]
-tokio = { workspace = true, features = ["fs", "process", "io-util"] }
+# Sorted alphabetically; optional deps grouped at the end.
+dirs = { workspace = true }
+pathdiff = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
 sha2 = { workspace = true }
-url = { workspace = true }
-regex = { workspace = true }
-dirs = { workspace = true }
-pathdiff = { workspace = true }
 tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "process"] }
+tracing = { workspace = true }
+url = { workspace = true }
 urlencoding = { workspace = true }
+
 reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
