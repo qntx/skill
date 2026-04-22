@@ -74,8 +74,7 @@ pub(super) async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
             // Resolve the symlink target to decide dir vs file exclusion.
             let resolved_is_dir = tokio::fs::metadata(&src_path)
                 .await
-                .map(|m| m.is_dir())
-                .unwrap_or(false);
+                .is_ok_and(|m| m.is_dir());
             if is_excluded_entry(&name_str, resolved_is_dir) {
                 continue;
             }
