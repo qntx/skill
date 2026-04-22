@@ -23,16 +23,15 @@ pub enum SkillError {
     },
 
     /// Git clone operation failed.
+    ///
+    /// The `message` embeds timeout / authentication context as
+    /// human-readable text (matching the TS reference's `message` field).
     #[error("git clone failed for {url}: {message}")]
     GitClone {
         /// The repository URL that failed.
         url: String,
-        /// Error description.
+        /// Error description (already formatted for end-user display).
         message: String,
-        /// Whether the clone timed out.
-        is_timeout: bool,
-        /// Whether the error is an authentication failure.
-        is_auth_error: bool,
     },
 
     /// An HTTP request failed.
@@ -81,15 +80,6 @@ pub enum SkillError {
     /// The specified agent was not found in the registry.
     #[error("unknown agent: {0}")]
     UnknownAgent(String),
-
-    /// An installation operation failed.
-    #[error("installation failed for `{skill}`: {message}")]
-    InstallFailed {
-        /// Skill name.
-        skill: String,
-        /// Error description.
-        message: String,
-    },
 }
 
 /// Convenience type alias for `Result<T, SkillError>`.

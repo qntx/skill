@@ -151,54 +151,16 @@ pub(crate) async fn run(mut args: AddArgs) -> Result<()> {
     Ok(())
 }
 
-#[allow(
-    clippy::cognitive_complexity,
-    clippy::too_many_lines,
-    reason = "sequential install pipeline with multiple stages"
-)]
 async fn run_single_source(
     source: &str,
     args: &mut AddArgs,
     manager: &SkillManager,
     cwd: &Path,
 ) -> Result<Option<Vec<AgentId>>> {
-    let spinner = cliclack::spinner();
+    let parsed = parse_and_display_source(source, manager);
 
-    // Parse and display source
-    spinner.start("Parsing source...");
-    let parsed = manager.parse_source(source);
-    let source_display = if parsed.source_type == SourceType::Local {
-        parsed
-            .local_path
-            .as_ref()
-            .map_or(String::new(), |p| p.to_string_lossy().into_owned())
-    } else {
-        parsed.url.clone()
-    };
-    let mut source_suffix = String::new();
-    if let Some(ref r) = parsed.git_ref {
-        let _ = write!(source_suffix, " @ {YELLOW}{r}{RESET}");
-    }
-    if let Some(ref s) = parsed.subpath {
-        let _ = write!(source_suffix, " ({s})");
-    }
-    if let Some(ref f) = parsed.skill_filter {
-        let _ = write!(source_suffix, " {DIM}@{RESET}{CYAN}{f}{RESET}");
-    }
-    spinner.stop(format!("Source: {source_display}{source_suffix}"));
-
-    // Block openclaw/* sources unless the caller explicitly opts in. Mirrors
-    // the TS `add.ts` guard at `3rdparty/skills/src/add.ts:946`.
     if is_openclaw_source(&parsed) && !args.dangerously_accept_openclaw_risks {
-        emit::warning("OpenClaw skills are unverified community submissions.");
-        emit::remark(
-            "This source contains user-submitted skills that have not been reviewed for safety or quality.",
-        );
-        emit::remark("Skills run with full agent permissions and could be malicious.");
-        emit::remark(format!(
-            "If you understand the risks, re-run with:\n  skills add {source} --dangerously-accept-openclaw-risks"
-        ));
-        emit::outro_cancel(format!("{RED}Installation blocked{RESET}"));
+        print_openclaw_block_message(source);
         return Ok(None);
     }
 
@@ -212,21 +174,129 @@ async fn run_single_source(
         return wellknown::run(&parsed, args, manager, cwd).await;
     }
 
-    // Clone/resolve source
+    let Some(skills) = clone_and_discover(&parsed, args).await? else {
+        return Ok(None);
+    };
+
+    if args.list {
+        print_skill_list(&skills);
+        return Ok(None);
+    }
+
+    let audit_handle = spawn_audit_fetch(&parsed, &skills, is_private);
+
+    let selected_skills = select::select_skills(&skills, args.skill.as_ref(), args.yes)?;
+    let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
+
+    let scope = select::resolve_scope(args.global, args.yes, &target_agents, manager)?;
+    let mode = select::resolve_mode(args.copy, args.yes)?;
+
+    output::print_installation_summary(&selected_skills, &target_agents, manager, scope, mode, cwd)
+        .await;
+
+    await_audit_and_display(audit_handle, &parsed, &selected_skills).await;
+
+    if args.dry_run {
+        println!();
+        emit::outro(format!(
+            "{DIM}Dry run complete — no changes were made.{RESET}"
+        ));
+        return Ok(Some(target_agents));
+    }
+
+    if !confirm_installation(args)? {
+        emit::outro_cancel("Installation cancelled");
+        return Ok(None);
+    }
+
+    execute_install(
+        manager,
+        &selected_skills,
+        &target_agents,
+        &parsed,
+        scope,
+        mode,
+        cwd,
+    )
+    .await;
+
+    hooks::send_telemetry(&parsed, &selected_skills, &target_agents, scope, is_private);
+
+    println!();
+    emit::outro(format!(
+        "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
+    ));
+
+    Ok(Some(target_agents))
+}
+
+/// Parse `source` and print the parsed summary line.
+fn parse_and_display_source(source: &str, manager: &SkillManager) -> skill::types::ParsedSource {
+    let spinner = cliclack::spinner();
+    spinner.start("Parsing source...");
+    let parsed = manager.parse_source(source);
+    spinner.stop(format!("Source: {}", format_parsed_source(&parsed)));
+    parsed
+}
+
+/// Human-readable one-line rendering of a parsed source (base URL + suffix).
+fn format_parsed_source(parsed: &skill::types::ParsedSource) -> String {
+    let base = if parsed.source_type == SourceType::Local {
+        parsed
+            .local_path
+            .as_ref()
+            .map_or(String::new(), |p| p.to_string_lossy().into_owned())
+    } else {
+        parsed.url.clone()
+    };
+
+    let mut out = base;
+    if let Some(ref r) = parsed.git_ref {
+        let _ = write!(out, " @ {YELLOW}{r}{RESET}");
+    }
+    if let Some(ref s) = parsed.subpath {
+        let _ = write!(out, " ({s})");
+    }
+    if let Some(ref f) = parsed.skill_filter {
+        let _ = write!(out, " {DIM}@{RESET}{CYAN}{f}{RESET}");
+    }
+    out
+}
+
+/// Emit the `OpenClaw` safety block message and guidance to re-run with opt-in.
+fn print_openclaw_block_message(source: &str) {
+    emit::warning("OpenClaw skills are unverified community submissions.");
+    emit::remark(
+        "This source contains user-submitted skills that have not been reviewed for safety or quality.",
+    );
+    emit::remark("Skills run with full agent permissions and could be malicious.");
+    emit::remark(format!(
+        "If you understand the risks, re-run with:\n  skills add {source} --dangerously-accept-openclaw-risks"
+    ));
+    emit::outro_cancel(format!("{RED}Installation blocked{RESET}"));
+}
+
+/// Clone or validate the source, then discover its skills.
+///
+/// Returns `Ok(None)` when the resolver found no skills at all (so the caller
+/// can bail out cleanly).
+async fn clone_and_discover(
+    parsed: &skill::types::ParsedSource,
+    args: &AddArgs,
+) -> Result<Option<Vec<Skill>>> {
     let clone_spinner = cliclack::spinner();
     if parsed.source_type == SourceType::Local {
         clone_spinner.start("Validating local path...");
     } else {
         clone_spinner.start("Cloning repository...");
     }
-    let (skills_dir, _temp_dir) = install::resolve_source(&parsed).await?;
+    let (skills_dir, _temp_dir) = install::resolve_source(parsed).await?;
     if parsed.source_type == SourceType::Local {
         clone_spinner.stop("Local path validated");
     } else {
         clone_spinner.stop("Repository cloned");
     }
 
-    // Discover skills
     let discover_spinner = cliclack::spinner();
     discover_spinner.start("Discovering skills...");
     let include_internal = args.skill.as_ref().is_some_and(|s| !s.is_empty());
@@ -251,61 +321,66 @@ async fn run_single_source(
         skills.len(),
         if skills.len() > 1 { "s" } else { "" }
     ));
+    Ok(Some(skills))
+}
 
-    if args.list {
-        print_skill_list(&skills);
-        return Ok(None);
+/// Kick off the security-audit fetch in the background.  Skipped for private
+/// repos (server refuses) and when there is no `owner/repo` identifier.
+fn spawn_audit_fetch(
+    parsed: &skill::types::ParsedSource,
+    skills: &[Skill],
+    is_private: Option<bool>,
+) -> Option<tokio::task::JoinHandle<Option<skill::telemetry::AuditResponse>>> {
+    if is_private.unwrap_or(false) {
+        return None;
     }
-
-    // Start audit fetch in parallel before user selection (matching TS pattern)
-    let owner_repo_for_audit = skill::source::get_owner_repo(&parsed);
+    let source_id = skill::source::get_owner_repo(parsed).unwrap_or_default();
     let skill_slugs: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
-    let audit_handle = if is_private.unwrap_or(false) {
-        None
-    } else {
-        let source_id = owner_repo_for_audit.clone().unwrap_or_default();
-        Some(tokio::spawn(async move {
-            skill::telemetry::fetch_audit_data(&source_id, &skill_slugs).await
-        }))
+    Some(tokio::spawn(async move {
+        skill::telemetry::fetch_audit_data(&source_id, &skill_slugs).await
+    }))
+}
+
+/// Await the audit job (if any) and render the result table.
+async fn await_audit_and_display(
+    handle: Option<tokio::task::JoinHandle<Option<skill::telemetry::AuditResponse>>>,
+    parsed: &skill::types::ParsedSource,
+    selected_skills: &[Skill],
+) {
+    let Some(handle) = handle else {
+        return;
     };
+    let Ok(Some(audit_data)) = handle.await else {
+        return;
+    };
+    let Some(source) = skill::source::get_owner_repo(parsed) else {
+        return;
+    };
+    output::print_security_audit(&audit_data, selected_skills, &source);
+}
 
-    let selected_skills = select::select_skills(&skills, args.skill.as_ref(), args.yes)?;
-    let target_agents = select_agents(manager, args.agent.as_ref(), args.yes).await?;
-
-    let scope = select::resolve_scope(args.global, args.yes, &target_agents, manager)?;
-    let mode = select::resolve_mode(args.copy, args.yes)?;
-
-    output::print_installation_summary(&selected_skills, &target_agents, manager, scope, mode, cwd)
-        .await;
-
-    // Await and display security audit results (started earlier in parallel)
-    if let Some(handle) = audit_handle
-        && let Ok(Some(audit_data)) = handle.await
-        && let Some(ref audit_source) = owner_repo_for_audit
-    {
-        output::print_security_audit(&audit_data, &selected_skills, audit_source);
+/// Ask the user to confirm the installation unless `--yes` was provided.
+fn confirm_installation(args: &AddArgs) -> Result<bool> {
+    if args.yes {
+        return Ok(true);
     }
+    ui::drain_input_events();
+    cliclack::confirm("Proceed with installation?")
+        .initial_value(true)
+        .interact()
+        .into_diagnostic()
+}
 
-    if args.dry_run {
-        println!();
-        emit::outro(format!(
-            "{DIM}Dry run complete — no changes were made.{RESET}"
-        ));
-        return Ok(Some(target_agents));
-    }
-
-    if !args.yes {
-        ui::drain_input_events();
-        let confirmed: bool = cliclack::confirm("Proceed with installation?")
-            .initial_value(true)
-            .interact()
-            .into_diagnostic()?;
-        if !confirmed {
-            emit::outro_cancel("Installation cancelled");
-            return Ok(None);
-        }
-    }
-
+/// Perform the install + lock-file update phases.
+async fn execute_install(
+    manager: &SkillManager,
+    selected_skills: &[Skill],
+    target_agents: &[AgentId],
+    parsed: &skill::types::ParsedSource,
+    scope: InstallScope,
+    mode: skill::types::InstallMode,
+    cwd: &Path,
+) {
     let install_opts = InstallOptions {
         scope,
         mode,
@@ -315,26 +390,17 @@ async fn run_single_source(
     let install_spinner = cliclack::spinner();
     install_spinner.start("Installing skills...");
     let outcomes =
-        install::do_install(manager, &selected_skills, &target_agents, &install_opts).await;
+        install::do_install(manager, selected_skills, target_agents, &install_opts).await;
     install_spinner.stop("Installation complete");
 
     println!();
     output::print_install_results(&outcomes, cwd);
 
     if scope == InstallScope::Global {
-        hooks::update_lock_file(&parsed, &selected_skills).await;
+        hooks::update_lock_file(parsed, selected_skills).await;
     } else {
-        hooks::update_local_lock_file(&parsed, &selected_skills, cwd).await;
+        hooks::update_local_lock_file(parsed, selected_skills, cwd).await;
     }
-
-    hooks::send_telemetry(&parsed, &selected_skills, &target_agents, scope, is_private);
-
-    println!();
-    emit::outro(format!(
-        "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
-    ));
-
-    Ok(Some(target_agents))
 }
 
 fn print_skill_list(skills: &[Skill]) {

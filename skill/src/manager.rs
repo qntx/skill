@@ -243,8 +243,7 @@ impl SkillManager {
                 .canonical_still_referenced(name, &target_agents, scope, &cwd)
                 .await
             {
-                drop(tokio::fs::remove_dir_all(&canonical).await);
-                drop(tokio::fs::remove_file(&canonical).await);
+                force_remove(&canonical).await;
             }
         }
 
@@ -268,8 +267,7 @@ impl SkillManager {
             };
             let paths = candidate_paths(agent, &self.agents, scope, &sanitized, cwd);
             for path in paths.into_iter().filter(|p| p != canonical) {
-                drop(tokio::fs::remove_dir_all(&path).await);
-                drop(tokio::fs::remove_file(&path).await);
+                force_remove(&path).await;
             }
         }
     }
@@ -295,6 +293,16 @@ impl SkillManager {
         }
         false
     }
+}
+
+/// Best-effort removal of whatever exists at `path` — directory, symlink,
+/// or regular file.  We try `remove_dir_all` first (handles directories and
+/// dir-symlinks on Unix, junctions on Windows) and fall through to
+/// `remove_file` for file-symlinks.  Every error is swallowed because this
+/// is called during cleanup where partial progress is acceptable.
+async fn force_remove(path: &Path) {
+    drop(tokio::fs::remove_dir_all(path).await);
+    drop(tokio::fs::remove_file(path).await);
 }
 
 /// Every directory an agent may have used for `sanitized` skill name under

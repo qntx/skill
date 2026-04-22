@@ -144,11 +144,6 @@ struct SyncInstallErr {
 }
 
 /// Run the `experimental_sync` command.
-#[allow(
-    clippy::cognitive_complexity,
-    clippy::too_many_lines,
-    reason = "multi-phase sync logic with install/uninstall"
-)]
 pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     let cwd = std::env::current_dir().into_diagnostic()?;
     let node_modules = cwd.join("node_modules");
@@ -163,33 +158,10 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     println!();
     emit::intro(format!("{INTRO_TAG} skills experimental_sync {RESET}"));
 
-    let spinner = cliclack::spinner();
-
-    spinner.start("Scanning node_modules for skills...");
-    let discover_opts = DiscoverOptions::default();
-    let all_skills = scan_node_modules(&node_modules, &discover_opts).await;
-
-    if all_skills.is_empty() {
-        spinner.stop(format!("{YELLOW}No skills found{RESET}"));
-        emit::outro(format!(
-            "{DIM}No SKILL.md files found in node_modules.{RESET}"
-        ));
+    let Some(all_skills) = discover_node_modules_skills(&node_modules).await else {
         return Ok(());
-    }
-
-    spinner.stop(format!(
-        "Found {GREEN}{}{RESET} skill{} in node_modules",
-        all_skills.len(),
-        if all_skills.len() > 1 { "s" } else { "" }
-    ));
-
-    for s in &all_skills {
-        let pkg = derive_package_name(&s.path, &node_modules);
-        emit::info(format!("{CYAN}{}{RESET} {DIM}from {pkg}{RESET}", s.name));
-        if !s.description.is_empty() {
-            emit::remark(format!("  {DIM}{}{RESET}", s.description));
-        }
-    }
+    };
+    report_discovered_skills(&all_skills, &node_modules);
 
     let (skills_to_sync, up_to_date) = if args.force {
         emit::info(format!("{DIM}Force mode: reinstalling all skills{RESET}"));
@@ -220,46 +192,127 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     let target_agents: Vec<AgentId> =
         super::add::select_agents(&manager, args.agent.as_ref(), args.yes).await?;
 
+    print_sync_summary(&skills_to_sync, &cwd, &node_modules);
+
+    if !confirm_sync(&args)? {
+        emit::outro_cancel("Sync cancelled");
+        return Ok(());
+    }
+
+    let (successful, failed) = perform_install(
+        &skills_to_sync,
+        &target_agents,
+        &manager,
+        &node_modules,
+        &cwd,
+    )
+    .await;
+
+    let successful_names: HashSet<&str> = successful.iter().map(|r| r.skill.as_str()).collect();
+    update_local_lock(&skills_to_sync, &successful_names, &node_modules, &cwd).await;
+
+    println!();
+    if !successful.is_empty() {
+        print_success_note(&successful, &cwd);
+    }
+    if !failed.is_empty() {
+        print_failure_summary(&failed);
+    }
+
+    send_sync_telemetry(&skills_to_sync, &successful_names, &target_agents);
+
+    println!();
+    emit::outro(format!(
+        "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
+    ));
+
+    Ok(())
+}
+
+/// Discover skills under `node_modules/`, returning `None` when none exist.
+async fn discover_node_modules_skills(node_modules: &Path) -> Option<Vec<Skill>> {
+    let spinner = cliclack::spinner();
+    spinner.start("Scanning node_modules for skills...");
+    let discover_opts = DiscoverOptions::default();
+    let all_skills = scan_node_modules(node_modules, &discover_opts).await;
+
+    if all_skills.is_empty() {
+        spinner.stop(format!("{YELLOW}No skills found{RESET}"));
+        emit::outro(format!(
+            "{DIM}No SKILL.md files found in node_modules.{RESET}"
+        ));
+        return None;
+    }
+
+    spinner.stop(format!(
+        "Found {GREEN}{}{RESET} skill{} in node_modules",
+        all_skills.len(),
+        if all_skills.len() > 1 { "s" } else { "" }
+    ));
+    Some(all_skills)
+}
+
+/// List the discovered skills with their originating package.
+fn report_discovered_skills(skills: &[Skill], node_modules: &Path) {
+    for s in skills {
+        let pkg = derive_package_name(&s.path, node_modules);
+        emit::info(format!("{CYAN}{}{RESET} {DIM}from {pkg}{RESET}", s.name));
+        if !s.description.is_empty() {
+            emit::remark(format!("  {DIM}{}{RESET}", s.description));
+        }
+    }
+}
+
+/// Emit the pre-install summary note.
+fn print_sync_summary(skills_to_sync: &[Skill], cwd: &Path, node_modules: &Path) {
     let mut summary_lines: Vec<String> = Vec::new();
-    for s in &skills_to_sync {
-        let canonical = skill::installer::get_canonical_path(&s.name, InstallScope::Project, &cwd);
-        let short = ui::shorten_path_with_cwd(&canonical, &cwd);
-        let pkg = derive_package_name(&s.path, &node_modules);
+    for s in skills_to_sync {
+        let canonical = skill::installer::get_canonical_path(&s.name, InstallScope::Project, cwd);
+        let short = ui::shorten_path_with_cwd(&canonical, cwd);
+        let pkg = derive_package_name(&s.path, node_modules);
         summary_lines.push(format!("{CYAN}{}{RESET} {DIM}← {pkg}{RESET}", s.name));
         summary_lines.push(format!("  {DIM}{short}{RESET}"));
     }
 
     println!();
     emit::note("Sync Summary", summary_lines.join("\n"));
+}
 
-    if !args.yes {
-        ui::drain_input_events();
-        let confirmed: bool = cliclack::confirm("Proceed with sync?")
-            .initial_value(true)
-            .interact()
-            .into_diagnostic()?;
-
-        if !confirmed {
-            emit::outro_cancel("Sync cancelled");
-            return Ok(());
-        }
+/// Confirm the sync interactively unless `--yes` was supplied.
+fn confirm_sync(args: &SyncArgs) -> Result<bool> {
+    if args.yes {
+        return Ok(true);
     }
+    ui::drain_input_events();
+    cliclack::confirm("Proceed with sync?")
+        .initial_value(true)
+        .interact()
+        .into_diagnostic()
+}
 
+/// Run the installer for every selected skill × agent combination.
+async fn perform_install(
+    skills_to_sync: &[Skill],
+    target_agents: &[AgentId],
+    manager: &SkillManager,
+    node_modules: &Path,
+    cwd: &Path,
+) -> (Vec<SyncInstallOk>, Vec<SyncInstallErr>) {
     let sync_spinner = cliclack::spinner();
     sync_spinner.start("Syncing skills...");
 
     let opts = InstallOptions {
         scope: InstallScope::Project,
         mode: InstallMode::Symlink,
-        cwd: Some(cwd.clone()),
+        cwd: Some(cwd.to_path_buf()),
     };
 
     let mut successful: Vec<SyncInstallOk> = Vec::new();
     let mut failed: Vec<SyncInstallErr> = Vec::new();
 
-    for skill_item in &skills_to_sync {
-        let pkg = derive_package_name(&skill_item.path, &node_modules);
-        for agent_id in &target_agents {
+    for skill_item in skills_to_sync {
+        let pkg = derive_package_name(&skill_item.path, node_modules);
+        for agent_id in target_agents {
             let display_name = manager
                 .agents()
                 .get(agent_id)
@@ -286,77 +339,91 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     }
 
     sync_spinner.stop("Sync complete");
+    (successful, failed)
+}
 
-    let successful_skill_names: HashSet<&str> =
-        successful.iter().map(|r| r.skill.as_str()).collect();
+/// Persist `skills-lock.json` entries for every successful install.
+async fn update_local_lock(
+    skills_to_sync: &[Skill],
+    successful_names: &HashSet<&str>,
+    node_modules: &Path,
+    cwd: &Path,
+) {
+    for skill_item in skills_to_sync {
+        if !successful_names.contains(skill_item.name.as_str()) {
+            continue;
+        }
+        let hash = local_lock::compute_skill_folder_hash(&skill_item.path)
+            .await
+            .unwrap_or_default();
+        let source = derive_package_name(&skill_item.path, node_modules);
+        let _ = local_lock::add_skill_to_local_lock(
+            &skill_item.name,
+            LocalSkillLockEntry {
+                source,
+                git_ref: None,
+                source_type: "node_modules".to_owned(),
+                computed_hash: hash,
+            },
+            cwd,
+        )
+        .await;
+    }
+}
 
-    for skill_item in &skills_to_sync {
-        if successful_skill_names.contains(skill_item.name.as_str()) {
-            let hash = local_lock::compute_skill_folder_hash(&skill_item.path)
-                .await
-                .unwrap_or_default();
-            let source = derive_package_name(&skill_item.path, &node_modules);
-            let _ = local_lock::add_skill_to_local_lock(
-                &skill_item.name,
-                LocalSkillLockEntry {
-                    source,
-                    git_ref: None,
-                    source_type: "node_modules".to_owned(),
-                    computed_hash: hash,
-                },
-                &cwd,
-            )
-            .await;
+/// Print the post-install success note, grouped per skill.
+fn print_success_note(successful: &[SyncInstallOk], cwd: &Path) {
+    let mut by_skill: BTreeMap<&str, Vec<&SyncInstallOk>> = BTreeMap::new();
+    for r in successful {
+        by_skill.entry(r.skill.as_str()).or_default().push(r);
+    }
+
+    let mut result_lines: Vec<String> = Vec::new();
+    for (skill_name, skill_results) in &by_skill {
+        let Some(first) = skill_results.first() else {
+            continue;
+        };
+        let pkg = &first.package_name;
+        result_lines.push(format!("{GREEN}✓{RESET} {skill_name} {DIM}← {pkg}{RESET}"));
+        if let Some(ref cp) = first.canonical_path {
+            let short = ui::shorten_path_with_cwd(cp, cwd);
+            result_lines.push(format!("  {DIM}{short}{RESET}"));
         }
     }
 
+    let skill_count = by_skill.len();
+    let title = format!(
+        "{GREEN}Synced {} skill{}{RESET}",
+        skill_count,
+        if skill_count == 1 { "" } else { "s" }
+    );
+    emit::note(title, result_lines.join("\n"));
+}
+
+/// Print the failure summary for agents / skills the installer could not reach.
+fn print_failure_summary(failed: &[SyncInstallErr]) {
     println!();
-
-    if !successful.is_empty() {
-        let mut by_skill: BTreeMap<&str, Vec<&SyncInstallOk>> = BTreeMap::new();
-        for r in &successful {
-            by_skill.entry(r.skill.as_str()).or_default().push(r);
-        }
-
-        let mut result_lines: Vec<String> = Vec::new();
-        for (skill_name, skill_results) in &by_skill {
-            let Some(first) = skill_results.first() else {
-                continue;
-            };
-            let pkg = &first.package_name;
-            result_lines.push(format!("{GREEN}✓{RESET} {skill_name} {DIM}← {pkg}{RESET}"));
-            if let Some(ref cp) = first.canonical_path {
-                let short = ui::shorten_path_with_cwd(cp, &cwd);
-                result_lines.push(format!("  {DIM}{short}{RESET}"));
-            }
-        }
-
-        let skill_count = by_skill.len();
-        let title = format!(
-            "{GREEN}Synced {} skill{}{RESET}",
-            skill_count,
-            if skill_count == 1 { "" } else { "s" }
-        );
-        emit::note(title, result_lines.join("\n"));
+    emit::error(format!("{RED}Failed to install {}{RESET}", failed.len()));
+    for r in failed {
+        let err = &r.error;
+        emit::remark(format!(
+            "  {RED}✗{RESET} {} → {}: {DIM}{err}{RESET}",
+            r.skill, r.agent
+        ));
     }
+}
 
-    if !failed.is_empty() {
-        println!();
-        emit::error(format!("{RED}Failed to install {}{RESET}", failed.len()));
-        for r in &failed {
-            let err = &r.error;
-            emit::remark(format!(
-                "  {RED}✗{RESET} {} → {}: {DIM}{err}{RESET}",
-                r.skill, r.agent
-            ));
-        }
-    }
-
+/// Emit the `experimental_sync` telemetry event.
+fn send_sync_telemetry(
+    skills_to_sync: &[Skill],
+    successful_names: &HashSet<&str>,
+    target_agents: &[AgentId],
+) {
     let mut props = HashMap::new();
     props.insert("skillCount".to_owned(), skills_to_sync.len().to_string());
     props.insert(
         "successCount".to_owned(),
-        successful_skill_names.len().to_string(),
+        successful_names.len().to_string(),
     );
     props.insert(
         "agents".to_owned(),
@@ -367,11 +434,4 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
             .join(","),
     );
     skill::telemetry::track("experimental_sync", props);
-
-    println!();
-    emit::outro(format!(
-        "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
-    ));
-
-    Ok(())
 }

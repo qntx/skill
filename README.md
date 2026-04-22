@@ -36,12 +36,6 @@ curl -fsSL https://sh.qntx.fun/skill | sh
 irm https://sh.qntx.fun/skill/ps | iex
 ```
 
-**Cargo**:
-
-```bash
-cargo install skills-cli
-```
-
 ## Quick Start
 
 ```bash

@@ -18,8 +18,8 @@ const CLONE_TIMEOUT: std::time::Duration = std::time::Duration::from_mins(1);
 ///
 /// # Errors
 ///
-/// Returns [`SkillError::GitClone`] with `is_timeout` / `is_auth_error` flags
-/// for structured error handling by callers.
+/// Returns [`SkillError::GitClone`] with a human-readable message on timeout,
+/// authentication failure, or any other `git` process error.
 pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
     let temp_dir = TempDir::new().map_err(|e| SkillError::io(PathBuf::from("/tmp"), e))?;
 
@@ -51,8 +51,6 @@ pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
             return Err(SkillError::GitClone {
                 url: url.to_owned(),
                 message: format!("failed to run git: {e}"),
-                is_timeout: false,
-                is_auth_error: false,
             });
         }
         Err(_elapsed) => {
@@ -66,8 +64,6 @@ pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
                     "  - For HTTPS: gh auth status (if using GitHub CLI)",
                 )
                 .to_owned(),
-                is_timeout: true,
-                is_auth_error: false,
             });
         }
     };
@@ -93,8 +89,6 @@ pub async fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<TempDir> {
         return Err(SkillError::GitClone {
             url: url.to_owned(),
             message,
-            is_timeout: false,
-            is_auth_error: is_auth,
         });
     }
 

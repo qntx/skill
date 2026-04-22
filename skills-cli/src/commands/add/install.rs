@@ -108,24 +108,34 @@ impl SkillInstallOutcome {
     }
 
     /// Display names grouped by category for the summary renderer.
-    pub(super) fn by_status(&self) -> (Vec<&str>, Vec<&str>, Vec<&str>, Vec<&str>) {
-        let mut universal = Vec::new();
-        let mut symlinked = Vec::new();
-        let mut copied = Vec::new();
-        let mut symlink_failed = Vec::new();
+    pub(super) fn by_status(&self) -> AgentStatusGroups<'_> {
+        let mut groups = AgentStatusGroups::default();
         for a in &self.agents {
             match a.status {
-                AgentInstallStatus::Universal => universal.push(a.display_name.as_str()),
-                AgentInstallStatus::Symlinked => symlinked.push(a.display_name.as_str()),
-                AgentInstallStatus::Copied { .. } => copied.push(a.display_name.as_str()),
+                AgentInstallStatus::Universal => groups.universal.push(a.display_name.as_str()),
+                AgentInstallStatus::Symlinked => groups.symlinked.push(a.display_name.as_str()),
+                AgentInstallStatus::Copied { .. } => groups.copied.push(a.display_name.as_str()),
                 AgentInstallStatus::SymlinkFellBackToCopy { .. } => {
-                    symlink_failed.push(a.display_name.as_str());
+                    groups.symlink_failed.push(a.display_name.as_str());
                 }
                 AgentInstallStatus::Failed => {}
             }
         }
-        (universal, symlinked, copied, symlink_failed)
+        groups
     }
+}
+
+/// Per-status buckets of agent display names for summary rendering.
+#[derive(Debug, Default)]
+pub(super) struct AgentStatusGroups<'a> {
+    /// Agents installed via the universal `.agents/skills` directory.
+    pub(super) universal: Vec<&'a str>,
+    /// Agents symlinked into the canonical tree.
+    pub(super) symlinked: Vec<&'a str>,
+    /// Agents explicitly copied (`--copy`).
+    pub(super) copied: Vec<&'a str>,
+    /// Agents that attempted a symlink and fell back to a copy.
+    pub(super) symlink_failed: Vec<&'a str>,
 }
 
 pub(super) async fn resolve_source(

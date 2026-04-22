@@ -200,6 +200,25 @@ async fn scan_skills_dir_for_agent(
     }
 }
 
+/// Resolve the filesystem path that would hold `skill_name` for this agent
+/// configuration, returning `None` when the target is out of bounds or the
+/// agent has no global directory in global scope.
+fn resolve_install_path(
+    skill_name: &str,
+    project_skills_dir: &str,
+    global_skills_dir: Option<&Path>,
+    scope: InstallScope,
+    cwd: &Path,
+) -> Option<PathBuf> {
+    let sanitized = sanitize_name(skill_name);
+    let target_base = match scope {
+        InstallScope::Global => global_skills_dir?.to_path_buf(),
+        InstallScope::Project => cwd.join(project_skills_dir),
+    };
+    let target_dir = target_base.join(sanitized);
+    is_path_safe(&target_base, &target_dir).then_some(target_dir)
+}
+
 /// Check if a skill is installed for an agent.
 pub async fn is_skill_installed(
     skill_name: &str,
@@ -207,19 +226,16 @@ pub async fn is_skill_installed(
     scope: InstallScope,
     cwd: &Path,
 ) -> bool {
-    let sanitized = sanitize_name(skill_name);
-    let target_base = match scope {
-        InstallScope::Global => match &agent.global_skills_dir {
-            Some(d) => d.clone(),
-            None => return false,
-        },
-        InstallScope::Project => cwd.join(&agent.skills_dir),
-    };
-    let skill_dir = target_base.join(sanitized);
-    if !is_path_safe(&target_base, &skill_dir) {
+    let Some(target) = resolve_install_path(
+        skill_name,
+        &agent.skills_dir,
+        agent.global_skills_dir.as_deref(),
+        scope,
+        cwd,
+    ) else {
         return false;
-    }
-    tokio::fs::try_exists(&skill_dir).await.unwrap_or(false)
+    };
+    tokio::fs::try_exists(&target).await.unwrap_or(false)
 }
 
 /// Check if a skill is installed — owned-value variant for `tokio::spawn`.
@@ -228,22 +244,19 @@ pub async fn is_skill_installed(
 /// future is `Send + 'static`, safe for parallel spawning.
 pub async fn is_skill_installed_owned(
     skill_name: String,
-    skills_dir: String,
+    project_skills_dir: String,
     global_skills_dir: Option<PathBuf>,
     scope: InstallScope,
     cwd: PathBuf,
 ) -> bool {
-    let sanitized = sanitize_name(&skill_name);
-    let target_base = match scope {
-        InstallScope::Global => match global_skills_dir {
-            Some(d) => d,
-            None => return false,
-        },
-        InstallScope::Project => cwd.join(&skills_dir),
-    };
-    let skill_dir = target_base.join(sanitized);
-    if !is_path_safe(&target_base, &skill_dir) {
+    let Some(target) = resolve_install_path(
+        &skill_name,
+        &project_skills_dir,
+        global_skills_dir.as_deref(),
+        scope,
+        &cwd,
+    ) else {
         return false;
-    }
-    tokio::fs::try_exists(&skill_dir).await.unwrap_or(false)
+    };
+    tokio::fs::try_exists(&target).await.unwrap_or(false)
 }

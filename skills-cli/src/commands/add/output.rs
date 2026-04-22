@@ -182,34 +182,34 @@ fn append_outcome_lines(lines: &mut Vec<String>, outcomes: &[&SkillInstallOutcom
 }
 
 fn append_agent_lines(lines: &mut Vec<String>, outcome: &SkillInstallOutcome) {
-    let (universal, symlinked, copied, symlink_failed) = outcome.by_status();
-    if !universal.is_empty() {
+    let groups = outcome.by_status();
+    if !groups.universal.is_empty() {
         lines.push(format!(
             "  {GREEN}universal:{RESET} {}",
-            ui::format_list(&str_vec_to_owned(&universal))
+            ui::format_list(&to_owned_vec(&groups.universal))
         ));
     }
-    if !symlinked.is_empty() {
+    if !groups.symlinked.is_empty() {
         lines.push(format!(
             "  {DIM}symlinked:{RESET} {}",
-            ui::format_list(&str_vec_to_owned(&symlinked))
+            ui::format_list(&to_owned_vec(&groups.symlinked))
         ));
     }
-    if !copied.is_empty() {
+    if !groups.copied.is_empty() {
         lines.push(format!(
             "  {DIM}copied:{RESET} {}",
-            ui::format_list(&str_vec_to_owned(&copied))
+            ui::format_list(&to_owned_vec(&groups.copied))
         ));
     }
-    if !symlink_failed.is_empty() {
+    if !groups.symlink_failed.is_empty() {
         lines.push(format!(
             "  {YELLOW}copied:{RESET} {}",
-            ui::format_list(&str_vec_to_owned(&symlink_failed))
+            ui::format_list(&to_owned_vec(&groups.symlink_failed))
         ));
     }
 }
 
-fn str_vec_to_owned(slice: &[&str]) -> Vec<String> {
+fn to_owned_vec(slice: &[&str]) -> Vec<String> {
     slice.iter().map(|s| (*s).to_owned()).collect()
 }
 

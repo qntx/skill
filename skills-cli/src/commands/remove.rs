@@ -113,11 +113,6 @@ fn validate_agents(manager: &SkillManager, agent_names: &[String]) -> Result<Vec
 }
 
 /// Run the remove command.
-#[allow(
-    clippy::cognitive_complexity,
-    clippy::too_many_lines,
-    reason = "interactive removal flow with multiple branches"
-)]
 pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let scope = if args.global {
@@ -127,16 +122,8 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
     };
     let cwd = std::env::current_dir().into_diagnostic()?;
 
-    // Merge --skill flag values into positional skills list (matches TS -s flag).
-    if let Some(ref skill_names) = args.skill {
-        for name in skill_names {
-            if !args.skills.contains(name) {
-                args.skills.push(name.clone());
-            }
-        }
-    }
+    merge_skill_flags(&mut args);
 
-    // Validate agent names early
     let target_agents: Vec<AgentId> = if let Some(ref agent_names) = args.agent {
         validate_agents(&manager, agent_names)?
     } else {
@@ -156,41 +143,9 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
         return Ok(());
     }
 
-    #[allow(
-        clippy::option_if_let_else,
-        clippy::single_match_else,
-        reason = "sequential conditions read clearer than match"
-    )]
-    let selected: Vec<String> = if args.all {
-        installed.clone()
-    } else if !args.skills.is_empty() {
-        // Handle wildcard: '*' selects all (matches TS).
-        if args.skills.contains(&"*".to_owned()) {
-            installed.clone()
-        } else {
-            let names_lower: Vec<String> = args.skills.iter().map(|s| s.to_lowercase()).collect();
-            installed
-                .iter()
-                .filter(|s| names_lower.contains(&s.to_lowercase()))
-                .cloned()
-                .collect()
-        }
-    } else {
-        let mut prompt = cliclack::multiselect(format!(
-            "Select skills to remove {DIM}(space to toggle){RESET}"
-        ));
-        for s in &installed {
-            prompt = prompt.item(s.clone(), s, "");
-        }
-        prompt = prompt.required(true);
-        ui::drain_input_events();
-        match prompt.interact() {
-            Ok(sel) => sel,
-            Err(_) => {
-                emit::outro_cancel("Removal cancelled");
-                return Ok(());
-            }
-        }
+    let Some(selected) = resolve_selection(&args, &installed) else {
+        emit::outro_cancel("Removal cancelled");
+        return Ok(());
     };
 
     if selected.is_empty() {
@@ -198,27 +153,9 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
         return Ok(());
     }
 
-    if !args.yes && !args.all {
-        println!();
-        emit::info("Skills to remove:");
-        for s in &selected {
-            emit::remark(format!(" {RED}•{RESET} {s}"));
-        }
-        println!();
-
-        ui::drain_input_events();
-        let confirmed: bool = cliclack::confirm(format!(
-            "Are you sure you want to uninstall {} skill(s)?",
-            selected.len()
-        ))
-        .initial_value(false)
-        .interact()
-        .into_diagnostic()?;
-
-        if !confirmed {
-            emit::outro_cancel("Removal cancelled");
-            return Ok(());
-        }
+    if !confirm_removal(&selected, &args)? {
+        emit::outro_cancel("Removal cancelled");
+        return Ok(());
     }
 
     let remove_spinner = cliclack::spinner();
@@ -244,23 +181,92 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
         selected.len()
     ));
 
-    // Clean up lock files: global lock for --global, local lock for project scope.
-    if args.global {
-        for name in &selected {
-            let _ = skill::lock::remove_skill_from_lock(name).await;
-        }
-    } else {
-        for name in &selected {
-            let _ = skill::local_lock::remove_skill_from_local_lock(name, &cwd).await;
-        }
-    }
-
-    // Telemetry (matches TS remove.ts: group by source).
+    cleanup_lock_entries(&selected, args.global, &cwd).await;
     send_remove_telemetry(&selected, &agents_for_telemetry, args.global).await;
 
     println!();
     emit::outro(format!("{GREEN}Done!{RESET}"));
     Ok(())
+}
+
+/// Fold `-s/--skill` flag values into the positional `skills` list.
+fn merge_skill_flags(args: &mut RemoveArgs) {
+    if let Some(ref skill_names) = args.skill {
+        for name in skill_names {
+            if !args.skills.contains(name) {
+                args.skills.push(name.clone());
+            }
+        }
+    }
+}
+
+/// Resolve which skills to remove from flags + optional interactive prompt.
+///
+/// Returns `None` when the user cancels the multiselect prompt.
+fn resolve_selection(args: &RemoveArgs, installed: &[String]) -> Option<Vec<String>> {
+    if args.all {
+        return Some(installed.to_vec());
+    }
+
+    if !args.skills.is_empty() {
+        if args.skills.contains(&"*".to_owned()) {
+            return Some(installed.to_vec());
+        }
+        let names_lower: Vec<String> = args.skills.iter().map(|s| s.to_lowercase()).collect();
+        return Some(
+            installed
+                .iter()
+                .filter(|s| names_lower.contains(&s.to_lowercase()))
+                .cloned()
+                .collect(),
+        );
+    }
+
+    let mut prompt = cliclack::multiselect(format!(
+        "Select skills to remove {DIM}(space to toggle){RESET}"
+    ));
+    for s in installed {
+        prompt = prompt.item(s.clone(), s, "");
+    }
+    prompt = prompt.required(true);
+    ui::drain_input_events();
+    prompt.interact().ok()
+}
+
+/// Confirm removal with the user unless `--yes` or `--all` was supplied.
+fn confirm_removal(selected: &[String], args: &RemoveArgs) -> Result<bool> {
+    if args.yes || args.all {
+        return Ok(true);
+    }
+
+    println!();
+    emit::info("Skills to remove:");
+    for s in selected {
+        emit::remark(format!(" {RED}•{RESET} {s}"));
+    }
+    println!();
+
+    ui::drain_input_events();
+    cliclack::confirm(format!(
+        "Are you sure you want to uninstall {} skill(s)?",
+        selected.len()
+    ))
+    .initial_value(false)
+    .interact()
+    .into_diagnostic()
+}
+
+/// Remove entries from the appropriate lock file after successful uninstall.
+async fn cleanup_lock_entries(selected: &[String], global: bool, cwd: &Path) {
+    if global {
+        for name in selected {
+            let _ = skill::lock::remove_skill_from_lock(name).await;
+        }
+    } else {
+        for name in selected {
+            let _ = skill::local_lock::remove_skill_from_local_lock(name, cwd).await;
+        }
+    }
 }
 
 async fn send_remove_telemetry(skills: &[String], agents: &[AgentId], global: bool) {
