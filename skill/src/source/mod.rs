@@ -3,12 +3,13 @@
 //! Converts user-provided source strings (GitHub shorthand, URLs, local
 //! paths, etc.) into a structured [`ParsedSource`].
 //!
-//! Internal layout:
-//! - [`regex`]    — compiled regex patterns and classification helpers
-//! - [`fragment`] — `#ref[@filter]` parsing for ref-aware installs
+//! Internal layout (private submodules):
 //!
-//! The public API is this module's `parse_source`, `get_owner_repo`,
-//! `parse_owner_repo`, and `sanitize_subpath`.
+//! - `regex`    — compiled regex patterns and classification helpers
+//! - `fragment` — `#ref[@filter]` parsing for ref-aware installs
+//!
+//! The public API is this module's [`parse_source`], [`get_owner_repo`],
+//! [`parse_owner_repo`], and [`sanitize_subpath`].
 
 mod fragment;
 mod regex;

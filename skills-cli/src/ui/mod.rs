@@ -3,13 +3,13 @@
 //! This module is organized by concern so each submodule fits in a single
 //! screen and can be unit-tested in isolation:
 //!
-//! - [`style`]        — terminal colour / style escape constants
-//! - [`banner`]       — ASCII logo and help banner rendering
-//! - [`format`]       — pure string-formatting helpers (path, kebab, list)
-//! - [`input`]        — raw-mode lifecycle and event draining
-//! - [`render`]       — cursor-anchored line renderer + prompt state
-//! - [`multiselect`]  — interactive search-multiselect prompt
-//! - [`fzf`]          — interactive fzf-style search prompt
+//! - `style`        — terminal colour / style escape constants
+//! - `banner`       — ASCII logo and help banner rendering
+//! - `format`       — pure string-formatting helpers (path, kebab, list)
+//! - `input`        — raw-mode lifecycle and event draining
+//! - `render`       — cursor-anchored line renderer + prompt state
+//! - `multiselect`  — interactive search-multiselect prompt
+//! - `fzf`          — interactive fzf-style search prompt
 
 pub(crate) mod banner;
 pub(crate) mod format;

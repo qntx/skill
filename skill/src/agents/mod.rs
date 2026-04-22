@@ -1,7 +1,7 @@
 //! Agent registry and detection.
 //!
 //! The **registry** API ([`AgentRegistry`]) is in this file; the actual
-//! table of built-in agents lives in the sibling [`builtin`] module so the
+//! table of built-in agents lives in the sibling `builtin` submodule so the
 //! data (what each agent's skill dir looks like on disk) stays separated
 //! from the behaviour (how to look agents up, detect them, classify them).
 
