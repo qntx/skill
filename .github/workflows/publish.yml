@@ -2,14 +2,10 @@ name: Publish to crates.io
 
 on:
   push:
-    tags:
-      - "v*.*.*"
-
-env:
-  CARGO_TERM_COLOR: always
+    tags: ["v*.*.*"]
 
 jobs:
-  call-publish:
+  publish:
     uses: qntx/workflows/.github/workflows/publish-crates.yml@main
     with:
       packages: "skill skills-cli"

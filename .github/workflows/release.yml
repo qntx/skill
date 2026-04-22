@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  call-cd:
+  release:
     uses: qntx/workflows/.github/workflows/release-rust.yml@main
     with:
       bin: skills
