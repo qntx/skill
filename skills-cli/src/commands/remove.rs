@@ -13,7 +13,8 @@ use skill::SkillManager;
 use skill::installer::canonical_skills_dir;
 use skill::types::{AgentId, InstallScope, RemoveOptions};
 
-use crate::ui::{self, DIM, RESET};
+use crate::ui::emit;
+use crate::ui::{self, DIM, GREEN, RED, RESET, YELLOW};
 
 /// Arguments for the `remove` command.
 #[derive(Args)]
@@ -151,7 +152,7 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
     ));
 
     if installed.is_empty() {
-        let _ = cliclack::outro_cancel("\x1b[33mNo skills found to remove.\x1b[0m");
+        emit::outro_cancel(format!("{YELLOW}No skills found to remove.{RESET}"));
         return Ok(());
     }
 
@@ -186,7 +187,7 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
         match prompt.interact() {
             Ok(sel) => sel,
             Err(_) => {
-                let _ = cliclack::outro_cancel("Removal cancelled");
+                emit::outro_cancel("Removal cancelled");
                 return Ok(());
             }
         }
@@ -199,9 +200,9 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
 
     if !args.yes && !args.all {
         println!();
-        let _ = cliclack::log::info("Skills to remove:");
+        emit::info("Skills to remove:");
         for s in &selected {
-            let _ = cliclack::log::remark(format!(" \x1b[31m\u{2022}\x1b[0m {s}"));
+            emit::remark(format!(" {RED}•{RESET} {s}"));
         }
         println!();
 
@@ -215,7 +216,7 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
         .into_diagnostic()?;
 
         if !confirmed {
-            let _ = cliclack::outro_cancel("Removal cancelled");
+            emit::outro_cancel("Removal cancelled");
             return Ok(());
         }
     }
@@ -238,8 +239,8 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
 
     remove_spinner.stop("Removal process complete");
 
-    let _ = cliclack::log::success(format!(
-        "\x1b[32mSuccessfully removed {} skill(s)\x1b[0m",
+    emit::success(format!(
+        "{GREEN}Successfully removed {} skill(s){RESET}",
         selected.len()
     ));
 
@@ -258,7 +259,7 @@ pub(crate) async fn run(mut args: RemoveArgs) -> Result<()> {
     send_remove_telemetry(&selected, &agents_for_telemetry, args.global).await;
 
     println!();
-    let _ = cliclack::outro("\x1b[32mDone!\x1b[0m");
+    emit::outro(format!("{GREEN}Done!{RESET}"));
     Ok(())
 }
 

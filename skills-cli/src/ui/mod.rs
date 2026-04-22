@@ -12,6 +12,7 @@
 //! - `fzf`          — interactive fzf-style search prompt
 
 pub(crate) mod banner;
+pub(crate) mod emit;
 pub(crate) mod format;
 pub(crate) mod fzf;
 pub(crate) mod input;
@@ -30,4 +31,6 @@ pub(crate) use multiselect::{
     LockedSection, SearchItem, SearchMultiselectOptions, SearchMultiselectResult,
     search_multiselect,
 };
-pub(crate) use style::{BOLD, CYAN, DIM, GREEN, RESET, TEXT, YELLOW};
+pub(crate) use style::{
+    BOLD, BOLD_RED, CLEAR_EOL, CYAN, DIM, GREEN, INTRO_TAG, RED, RESET, TEXT, YELLOW,
+};

@@ -342,8 +342,6 @@ pub fn sanitize_subpath(subpath: &str) -> Result<String> {
 mod tests {
     use super::*;
 
-    // ── parse_source: core source types ──
-
     #[test]
     fn test_parse_source_github_shorthand_yields_canonical_url() {
         let p = parse_source("qntx/skills");
@@ -377,8 +375,6 @@ mod tests {
         let p = parse_source("git@internal-host:team/repo.git");
         assert_eq!(p.source_type, SourceType::Git);
     }
-
-    // ── parse_source: fragment refs ──
 
     #[test]
     fn test_parse_source_fragment_ref_on_shorthand() {
@@ -422,8 +418,6 @@ mod tests {
         assert_eq!(p.git_ref.as_deref(), Some("feature/auth"));
     }
 
-    // ── get_owner_repo ──
-
     #[test]
     fn test_get_owner_repo_extracts_from_https_url() {
         let p = parse_source("https://github.com/foo/bar.git");
@@ -449,8 +443,6 @@ mod tests {
         assert_eq!(get_owner_repo(&p), None);
     }
 
-    // ── parse_owner_repo ──
-
     #[test]
     fn test_parse_owner_repo_valid_pair() {
         assert_eq!(
@@ -468,8 +460,6 @@ mod tests {
     fn test_parse_owner_repo_rejects_empty() {
         assert_eq!(parse_owner_repo(""), None);
     }
-
-    // ── sanitize_subpath ──
 
     #[test]
     fn test_sanitize_subpath_safe_path_roundtrips() {

@@ -15,7 +15,10 @@ pub(crate) use select::select_agents;
 use skill::SkillManager;
 use skill::types::{AgentId, DiscoverOptions, InstallOptions, InstallScope, Skill, SourceType};
 
-use crate::ui::{self, DIM, GREEN, RESET, TEXT, YELLOW, kebab_to_title};
+use crate::ui::emit;
+use crate::ui::{
+    self, BOLD, CYAN, DIM, GREEN, INTRO_TAG, RED, RESET, TEXT, YELLOW, kebab_to_title,
+};
 
 /// Arguments for the `add` command.
 #[derive(Args)]
@@ -129,7 +132,7 @@ pub(crate) async fn run(mut args: AddArgs) -> Result<()> {
     }
 
     println!();
-    let _ = cliclack::intro("\x1b[46m\x1b[30m skills \x1b[0m");
+    emit::intro(format!("{INTRO_TAG} skills {RESET}"));
 
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
@@ -181,23 +184,22 @@ async fn run_single_source(
         let _ = write!(source_suffix, " ({s})");
     }
     if let Some(ref f) = parsed.skill_filter {
-        let _ = write!(source_suffix, " {DIM}@{RESET}\x1b[36m{f}\x1b[0m");
+        let _ = write!(source_suffix, " {DIM}@{RESET}{CYAN}{f}{RESET}");
     }
     spinner.stop(format!("Source: {source_display}{source_suffix}"));
 
     // Block openclaw/* sources unless the caller explicitly opts in. Mirrors
     // the TS `add.ts` guard at `3rdparty/skills/src/add.ts:946`.
     if is_openclaw_source(&parsed) && !args.dangerously_accept_openclaw_risks {
-        let _ = cliclack::log::warning("OpenClaw skills are unverified community submissions.");
-        let _ = cliclack::log::remark(
+        emit::warning("OpenClaw skills are unverified community submissions.");
+        emit::remark(
             "This source contains user-submitted skills that have not been reviewed for safety or quality.",
         );
-        let _ =
-            cliclack::log::remark("Skills run with full agent permissions and could be malicious.");
-        let _ = cliclack::log::remark(format!(
+        emit::remark("Skills run with full agent permissions and could be malicious.");
+        emit::remark(format!(
             "If you understand the risks, re-run with:\n  skills add {source} --dangerously-accept-openclaw-risks"
         ));
-        let _ = cliclack::outro_cancel("\x1b[31mInstallation blocked\x1b[0m");
+        emit::outro_cancel(format!("{RED}Installation blocked{RESET}"));
         return Ok(None);
     }
 
@@ -239,10 +241,10 @@ async fn run_single_source(
             .map_err(|e| miette!("{e}"))?;
 
     if skills.is_empty() {
-        discover_spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
-        let _ = cliclack::outro(
-            "\x1b[31mNo valid skills found. Skills require a SKILL.md with name and description.\x1b[0m",
-        );
+        discover_spinner.stop(format!("{RED}No skills found{RESET}"));
+        emit::outro(format!(
+            "{RED}No valid skills found. Skills require a SKILL.md with name and description.{RESET}",
+        ));
         return Ok(None);
     }
     discover_spinner.stop(format!(
@@ -287,7 +289,7 @@ async fn run_single_source(
 
     if args.dry_run {
         println!();
-        let _ = cliclack::outro(format!(
+        emit::outro(format!(
             "{DIM}Dry run complete — no changes were made.{RESET}"
         ));
         return Ok(Some(target_agents));
@@ -300,7 +302,7 @@ async fn run_single_source(
             .interact()
             .into_diagnostic()?;
         if !confirmed {
-            let _ = cliclack::outro_cancel("Installation cancelled");
+            emit::outro_cancel("Installation cancelled");
             return Ok(None);
         }
     }
@@ -329,7 +331,7 @@ async fn run_single_source(
     hooks::send_telemetry(&parsed, &selected_skills, &target_agents, scope, is_private);
 
     println!();
-    let _ = cliclack::outro(format!(
+    emit::outro(format!(
         "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
     ));
 
@@ -354,10 +356,10 @@ async fn handle_wellknown_source(
         .map_err(|e| miette!("{e}"))?;
 
     if wk_skills.is_empty() {
-        discover_spinner.stop("\x1b[31mNo skills found\x1b[0m".to_owned());
-        let _ = cliclack::outro(
-            "\x1b[31mNo skills found at this URL. Make sure the server has a /.well-known/skills/index.json file.\x1b[0m",
-        );
+        discover_spinner.stop(format!("{RED}No skills found{RESET}"));
+        emit::outro(format!(
+            "{RED}No skills found at this URL. Make sure the server has a /.well-known/skills/index.json file.{RESET}",
+        ));
         return Ok(None);
     }
 
@@ -415,7 +417,7 @@ async fn handle_wellknown_source(
     hooks::send_wellknown_telemetry(&wk_skills, &target_agents, scope);
 
     println!();
-    let _ = cliclack::outro(format!(
+    emit::outro(format!(
         "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
     ));
 
@@ -424,7 +426,7 @@ async fn handle_wellknown_source(
 
 fn print_skill_list(skills: &[Skill]) {
     println!();
-    let _ = cliclack::log::step("\x1b[1mAvailable Skills\x1b[0m");
+    emit::step(format!("{BOLD}Available Skills{RESET}"));
 
     let mut grouped: BTreeMap<String, Vec<&Skill>> = BTreeMap::new();
     let mut ungrouped: Vec<&Skill> = Vec::new();
@@ -438,24 +440,24 @@ fn print_skill_list(skills: &[Skill]) {
 
     for (group, items) in &grouped {
         let title = kebab_to_title(group);
-        println!("\x1b[1m{title}\x1b[0m");
+        println!("{BOLD}{title}{RESET}");
         for s in items {
-            let _ = cliclack::log::remark(format!("  \x1b[36m{}\x1b[0m", s.name));
-            let _ = cliclack::log::remark(format!("    {DIM}{}{RESET}", s.description));
+            emit::remark(format!("  {CYAN}{}{RESET}", s.name));
+            emit::remark(format!("    {DIM}{}{RESET}", s.description));
         }
         println!();
     }
 
     if !ungrouped.is_empty() {
         if !grouped.is_empty() {
-            println!("\x1b[1mGeneral\x1b[0m");
+            println!("{BOLD}General{RESET}");
         }
         for s in &ungrouped {
-            let _ = cliclack::log::remark(format!("  \x1b[36m{}\x1b[0m", s.name));
-            let _ = cliclack::log::remark(format!("    {DIM}{}{RESET}", s.description));
+            emit::remark(format!("  {CYAN}{}{RESET}", s.name));
+            emit::remark(format!("    {DIM}{}{RESET}", s.description));
         }
     }
 
     println!();
-    let _ = cliclack::outro("Use --skill <name> to install specific skills");
+    emit::outro("Use --skill <name> to install specific skills");
 }

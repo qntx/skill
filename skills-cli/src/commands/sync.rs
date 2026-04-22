@@ -15,7 +15,8 @@ use skill::local_lock::{self, LocalSkillLockEntry};
 use skill::skills::discover_skills;
 use skill::types::{AgentId, DiscoverOptions, InstallMode, InstallOptions, InstallScope, Skill};
 
-use crate::ui::{self, DIM, RESET};
+use crate::ui::emit;
+use crate::ui::{self, CYAN, DIM, GREEN, INTRO_TAG, RED, RESET, YELLOW};
 
 /// Arguments for the `experimental_sync` command.
 #[derive(Args)]
@@ -160,7 +161,7 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
 
     println!();
-    let _ = cliclack::intro("\x1b[46m\x1b[30m skills experimental_sync \x1b[0m");
+    emit::intro(format!("{INTRO_TAG} skills experimental_sync {RESET}"));
 
     let spinner = cliclack::spinner();
 
@@ -169,36 +170,36 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     let all_skills = scan_node_modules(&node_modules, &discover_opts).await;
 
     if all_skills.is_empty() {
-        spinner.stop("\x1b[33mNo skills found\x1b[0m");
-        let _ = cliclack::outro(format!(
+        spinner.stop(format!("{YELLOW}No skills found{RESET}"));
+        emit::outro(format!(
             "{DIM}No SKILL.md files found in node_modules.{RESET}"
         ));
         return Ok(());
     }
 
     spinner.stop(format!(
-        "Found \x1b[32m{}\x1b[0m skill{} in node_modules",
+        "Found {GREEN}{}{RESET} skill{} in node_modules",
         all_skills.len(),
         if all_skills.len() > 1 { "s" } else { "" }
     ));
 
     for s in &all_skills {
         let pkg = derive_package_name(&s.path, &node_modules);
-        let _ = cliclack::log::info(format!("\x1b[36m{}\x1b[0m {DIM}from {pkg}{RESET}", s.name));
+        emit::info(format!("{CYAN}{}{RESET} {DIM}from {pkg}{RESET}", s.name));
         if !s.description.is_empty() {
-            let _ = cliclack::log::remark(format!("  {DIM}{}{RESET}", s.description));
+            emit::remark(format!("  {DIM}{}{RESET}", s.description));
         }
     }
 
     let (skills_to_sync, up_to_date) = if args.force {
-        let _ = cliclack::log::info(format!("{DIM}Force mode: reinstalling all skills{RESET}"));
+        emit::info(format!("{DIM}Force mode: reinstalling all skills{RESET}"));
         (all_skills, 0)
     } else {
         filter_outdated(all_skills, &cwd).await
     };
 
     if up_to_date > 0 {
-        let _ = cliclack::log::info(format!(
+        emit::info(format!(
             "{DIM}{up_to_date} skill{} already up to date{RESET}",
             if up_to_date == 1 { "" } else { "s" }
         ));
@@ -206,11 +207,11 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
 
     if skills_to_sync.is_empty() {
         println!();
-        let _ = cliclack::outro("\x1b[32mAll skills are up to date.\x1b[0m");
+        emit::outro(format!("{GREEN}All skills are up to date.{RESET}"));
         return Ok(());
     }
 
-    let _ = cliclack::log::info(format!(
+    emit::info(format!(
         "{} skill{} to install/update",
         skills_to_sync.len(),
         if skills_to_sync.len() == 1 { "" } else { "s" }
@@ -224,15 +225,12 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
         let canonical = skill::installer::get_canonical_path(&s.name, InstallScope::Project, &cwd);
         let short = ui::shorten_path_with_cwd(&canonical, &cwd);
         let pkg = derive_package_name(&s.path, &node_modules);
-        summary_lines.push(format!(
-            "\x1b[36m{}\x1b[0m {DIM}\u{2190} {pkg}{RESET}",
-            s.name
-        ));
+        summary_lines.push(format!("{CYAN}{}{RESET} {DIM}← {pkg}{RESET}", s.name));
         summary_lines.push(format!("  {DIM}{short}{RESET}"));
     }
 
     println!();
-    let _ = cliclack::note("Sync Summary", summary_lines.join("\n"));
+    emit::note("Sync Summary", summary_lines.join("\n"));
 
     if !args.yes {
         ui::drain_input_events();
@@ -242,7 +240,7 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
             .into_diagnostic()?;
 
         if !confirmed {
-            let _ = cliclack::outro_cancel("Sync cancelled");
+            emit::outro_cancel("Sync cancelled");
             return Ok(());
         }
     }
@@ -326,9 +324,7 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
                 continue;
             };
             let pkg = &first.package_name;
-            result_lines.push(format!(
-                "\x1b[32m\u{2713}\x1b[0m {skill_name} {DIM}\u{2190} {pkg}{RESET}"
-            ));
+            result_lines.push(format!("{GREEN}✓{RESET} {skill_name} {DIM}← {pkg}{RESET}"));
             if let Some(ref cp) = first.canonical_path {
                 let short = ui::shorten_path_with_cwd(cp, &cwd);
                 result_lines.push(format!("  {DIM}{short}{RESET}"));
@@ -337,20 +333,20 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
 
         let skill_count = by_skill.len();
         let title = format!(
-            "\x1b[32mSynced {} skill{}\x1b[0m",
+            "{GREEN}Synced {} skill{}{RESET}",
             skill_count,
             if skill_count == 1 { "" } else { "s" }
         );
-        let _ = cliclack::note(title, result_lines.join("\n"));
+        emit::note(title, result_lines.join("\n"));
     }
 
     if !failed.is_empty() {
         println!();
-        let _ = cliclack::log::error(format!("\x1b[31mFailed to install {}\x1b[0m", failed.len()));
+        emit::error(format!("{RED}Failed to install {}{RESET}", failed.len()));
         for r in &failed {
             let err = &r.error;
-            let _ = cliclack::log::remark(format!(
-                "  \x1b[31m\u{2717}\x1b[0m {} \u{2192} {}: {DIM}{err}{RESET}",
+            emit::remark(format!(
+                "  {RED}✗{RESET} {} → {}: {DIM}{err}{RESET}",
                 r.skill, r.agent
             ));
         }
@@ -373,8 +369,8 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
     skill::telemetry::track("experimental_sync", props);
 
     println!();
-    let _ = cliclack::outro(format!(
-        "\x1b[32mDone!\x1b[0m  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
+    emit::outro(format!(
+        "{GREEN}Done!{RESET}  {DIM}Review skills before use; they run with full agent permissions.{RESET}"
     ));
 
     Ok(())

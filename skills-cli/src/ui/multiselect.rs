@@ -15,7 +15,10 @@ use crossterm::{
 
 use super::input::RawModeGuard;
 use super::render::{PromptState, render_lines};
-use super::style::{S_BAR, S_BAR_H, S_BULLET, S_RADIO_ACTIVE, S_RADIO_INACTIVE};
+use super::style::{
+    BOLD, CURSOR_ARROW, FAINT, GREEN, RESET, REVERSE, S_BAR, S_BAR_H, S_BULLET, S_RADIO_ACTIVE,
+    S_RADIO_INACTIVE, STRIKE, UNDERLINE,
+};
 
 /// One selectable item.
 #[derive(Clone, Debug)]
@@ -294,7 +297,7 @@ fn build_lines(
     max_vis: usize,
 ) -> Vec<String> {
     let filtered = filtered_indices(items, query);
-    let mut lines = vec![format!("{}  \x1b[1m{message}\x1b[0m", state.icon())];
+    let mut lines = vec![format!("{}  {BOLD}{message}{RESET}", state.icon())];
 
     match state {
         PromptState::Active => {
@@ -303,33 +306,30 @@ fn build_lines(
             {
                 lines.push(S_BAR.to_owned());
                 lines.push(format!(
-                    "{S_BAR}  {S_BAR_H}{S_BAR_H} \x1b[1m{}\x1b[0m \x1b[2m── always included\x1b[0m {}{S_BAR_H}",
+                    "{S_BAR}  {S_BAR_H}{S_BAR_H} {BOLD}{}{RESET} {FAINT}── always included{RESET} {}{S_BAR_H}",
                     ls.title,
                     S_BAR_H.repeat(12)
                 ));
                 for item in &ls.items {
-                    lines.push(format!(
-                        "{S_BAR}    {S_BULLET} \x1b[1m{}\x1b[0m",
-                        item.label
-                    ));
+                    lines.push(format!("{S_BAR}    {S_BULLET} {BOLD}{}{RESET}", item.label));
                 }
                 lines.push(S_BAR.to_owned());
                 lines.push(format!(
-                    "{S_BAR}  {S_BAR_H}{S_BAR_H} \x1b[1mAdditional agents\x1b[0m {}",
+                    "{S_BAR}  {S_BAR_H}{S_BAR_H} {BOLD}Additional agents{RESET} {}",
                     S_BAR_H.repeat(29)
                 ));
             }
 
             lines.push(format!(
-                "{S_BAR}  \x1b[2mSearch:\x1b[0m {query}\x1b[7m \x1b[0m"
+                "{S_BAR}  {FAINT}Search:{RESET} {query}{REVERSE} {RESET}"
             ));
             lines.push(format!(
-                "{S_BAR}  \x1b[2m↑↓ move, space select, enter confirm\x1b[0m"
+                "{S_BAR}  {FAINT}↑↓ move, space select, enter confirm{RESET}"
             ));
             lines.push(S_BAR.to_owned());
 
             if filtered.is_empty() {
-                lines.push(format!("{S_BAR}  \x1b[2mNo matches found\x1b[0m"));
+                lines.push(format!("{S_BAR}  {FAINT}No matches found{RESET}"));
             } else {
                 let (start, end) = visible_range(filtered.len(), cursor, max_vis);
                 for (vi, &idx) in filtered.iter().enumerate().take(end).skip(start) {
@@ -341,15 +341,15 @@ fn build_lines(
                         S_RADIO_INACTIVE
                     };
                     let label = if is_cur {
-                        format!("\x1b[4m{}\x1b[0m", item.label)
+                        format!("{UNDERLINE}{}{RESET}", item.label)
                     } else {
                         item.label.clone()
                     };
                     let hint = item
                         .hint
                         .as_ref()
-                        .map_or(String::new(), |h| format!(" \x1b[2m({h})\x1b[0m"));
-                    let arrow = if is_cur { "\x1b[36m❯\x1b[0m" } else { " " };
+                        .map_or(String::new(), |h| format!(" {FAINT}({h}){RESET}"));
+                    let arrow = if is_cur { CURSOR_ARROW } else { " " };
                     lines.push(format!("{S_BAR} {arrow} {radio} {label}{hint}"));
                 }
 
@@ -363,28 +363,28 @@ fn build_lines(
                     if hidden_after > 0 {
                         parts.push(format!("↓ {hidden_after} more"));
                     }
-                    lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", parts.join("  ")));
+                    lines.push(format!("{S_BAR}  {FAINT}{}{RESET}", parts.join("  ")));
                 }
             }
 
             lines.push(S_BAR.to_owned());
             let labels = collect_labels(locked, items, selected);
             if labels.is_empty() {
-                lines.push(format!("{S_BAR}  \x1b[2mSelected: (none)\x1b[0m"));
+                lines.push(format!("{S_BAR}  {FAINT}Selected: (none){RESET}"));
             } else {
                 lines.push(format!(
-                    "{S_BAR}  \x1b[32mSelected:\x1b[0m {}",
+                    "{S_BAR}  {GREEN}Selected:{RESET} {}",
                     format_summary(&labels)
                 ));
             }
-            lines.push("\x1b[2m└\x1b[0m".to_owned());
+            lines.push(format!("{FAINT}└{RESET}"));
         }
         PromptState::Submit => {
             let labels = collect_labels(locked, items, selected);
-            lines.push(format!("{S_BAR}  \x1b[2m{}\x1b[0m", labels.join(", ")));
+            lines.push(format!("{S_BAR}  {FAINT}{}{RESET}", labels.join(", ")));
         }
         PromptState::Cancel => {
-            lines.push(format!("{S_BAR}  \x1b[9m\x1b[2mCancelled\x1b[0m"));
+            lines.push(format!("{S_BAR}  {STRIKE}{FAINT}Cancelled{RESET}"));
         }
     }
 

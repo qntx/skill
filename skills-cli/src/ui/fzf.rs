@@ -14,7 +14,7 @@ use crossterm::{
 
 use super::input::RawModeGuard;
 use super::render::{PromptState, render_lines};
-use super::style::{DIM, RESET, TEXT};
+use super::style::{BOLD, CURSOR_HIDE, CURSOR_SHOW, CYAN, DIM, RESET, TEXT};
 
 /// A search result item for the fzf prompt.
 #[derive(Clone, Debug)]
@@ -84,11 +84,11 @@ where
         let _ = event::read()?;
     }
 
-    write!(stdout, "\x1b[?25l")?;
+    write!(stdout, "{CURSOR_HIDE}")?;
     stdout.flush()?;
 
     let cleanup = |stdout: &mut io::Stdout| -> io::Result<()> {
-        write!(stdout, "\x1b[?25h")?;
+        write!(stdout, "{CURSOR_SHOW}")?;
         stdout.flush()
     };
 
@@ -264,7 +264,7 @@ fn build_lines(
 
     match state {
         PromptState::Active => {
-            lines.push(format!("{TEXT}{message}{RESET} {query}\x1b[1m_\x1b[0m"));
+            lines.push(format!("{TEXT}{message}{RESET} {query}{BOLD}_{RESET}"));
             lines.push(String::new());
 
             if query.is_empty() || query.len() < 2 {
@@ -277,9 +277,13 @@ fn build_lines(
                 let max_show = max_visible.min(results.len());
                 for (i, item) in results.iter().take(max_show).enumerate() {
                     let is_cur = i == cursor;
-                    let arrow = if is_cur { "\x1b[1m>\x1b[0m" } else { " " };
+                    let arrow: String = if is_cur {
+                        format!("{BOLD}>{RESET}")
+                    } else {
+                        " ".to_owned()
+                    };
                     let name = if is_cur {
-                        format!("\x1b[1m{}\x1b[0m", item.label)
+                        format!("{BOLD}{}{RESET}", item.label)
                     } else {
                         format!("{TEXT}{}{RESET}", item.label)
                     };
@@ -291,7 +295,7 @@ fn build_lines(
                     let badge = if item.description.is_empty() {
                         String::new()
                     } else {
-                        format!(" \x1b[36m{}\x1b[0m", item.description)
+                        format!(" {CYAN}{}{RESET}", item.description)
                     };
                     let loading_mark = if loading && i == 0 {
                         format!(" {DIM}...{RESET}")

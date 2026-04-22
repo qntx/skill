@@ -14,7 +14,8 @@ use miette::{IntoDiagnostic, Result};
 use skill::SkillManager;
 use skill::types::{InstallScope, ListOptions};
 
-use crate::ui::{DIM, GREEN, RESET, TEXT, YELLOW};
+use crate::ui::emit;
+use crate::ui::{BOLD, DIM, GREEN, RED, RESET, TEXT, YELLOW};
 
 /// Severity of a diagnostic finding.
 enum Severity {
@@ -60,7 +61,7 @@ pub(crate) async fn run() -> Result<()> {
         .count();
 
     if findings.is_empty() {
-        let _ = cliclack::log::success(format!(
+        emit::success(format!(
             "{GREEN}All checks passed — no issues found.{RESET}"
         ));
         return Ok(());
@@ -73,12 +74,12 @@ pub(crate) async fn run() -> Result<()> {
 
     for (category, items) in &by_category {
         println!();
-        println!("  \x1b[1m{category}\x1b[0m");
+        println!("  {BOLD}{category}{RESET}");
         for f in items {
             let icon = match f.severity {
-                Severity::Ok => format!("{GREEN}\u{2713}{RESET}"),
-                Severity::Warning => format!("{YELLOW}\u{25b2}{RESET}"),
-                Severity::Error => "\x1b[31m\u{2717}\x1b[0m".to_owned(),
+                Severity::Ok => format!("{GREEN}✓{RESET}"),
+                Severity::Warning => format!("{YELLOW}▲{RESET}"),
+                Severity::Error => format!("{RED}✗{RESET}"),
             };
             println!("  {icon} {}", f.message);
             if let Some(ref hint) = f.hint {
@@ -90,7 +91,7 @@ pub(crate) async fn run() -> Result<()> {
     println!();
     let mut summary_parts = Vec::new();
     if errors > 0 {
-        summary_parts.push(format!("\x1b[31m{errors} error(s)\x1b[0m"));
+        summary_parts.push(format!("{RED}{errors} error(s){RESET}"));
     }
     if warnings > 0 {
         summary_parts.push(format!("{YELLOW}{warnings} warning(s){RESET}"));
@@ -98,7 +99,7 @@ pub(crate) async fn run() -> Result<()> {
     if ok_count > 0 {
         summary_parts.push(format!("{GREEN}{ok_count} ok{RESET}"));
     }
-    let _ = cliclack::outro(format!("{TEXT}Result:{RESET} {}", summary_parts.join(", ")));
+    emit::outro(format!("{TEXT}Result:{RESET} {}", summary_parts.join(", ")));
 
     Ok(())
 }

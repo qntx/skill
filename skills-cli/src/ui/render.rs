@@ -7,7 +7,7 @@
 
 use std::io::{self, Write};
 
-use super::style::{S_STEP_ACTIVE, S_STEP_CANCEL, S_STEP_SUBMIT};
+use super::style::{CLEAR_LINE, CURSOR_DOWN_1, S_STEP_ACTIVE, S_STEP_CANCEL, S_STEP_SUBMIT};
 
 /// Lifecycle state of an interactive prompt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,14 +31,25 @@ impl PromptState {
     }
 }
 
+/// Move the cursor up `n` lines (CUU — Cursor Up).
+///
+/// `n == 0` is a no-op so we can blindly call this at the start of a redraw
+/// before any lines have been written.
+fn cursor_up(stdout: &mut io::Stdout, n: u16) -> io::Result<()> {
+    if n > 0 {
+        write!(stdout, "\x1b[{n}A")?;
+    }
+    Ok(())
+}
+
 /// Clear `height` previously rendered lines, leaving the cursor at the top.
 fn clear_rendered(stdout: &mut io::Stdout, height: u16) -> io::Result<()> {
     if height > 0 {
-        write!(stdout, "\x1b[{height}A")?;
+        cursor_up(stdout, height)?;
         for _ in 0..height {
-            write!(stdout, "\x1b[2K\x1b[1B")?;
+            write!(stdout, "{CLEAR_LINE}{CURSOR_DOWN_1}")?;
         }
-        write!(stdout, "\x1b[{height}A")?;
+        cursor_up(stdout, height)?;
     }
     Ok(())
 }
@@ -51,7 +62,7 @@ pub(crate) fn render_lines(
 ) -> io::Result<()> {
     clear_rendered(stdout, *height)?;
     for line in lines {
-        write!(stdout, "\x1b[2K{line}\r\n")?;
+        write!(stdout, "{CLEAR_LINE}{line}\r\n")?;
     }
     *height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
     stdout.flush()

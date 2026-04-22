@@ -8,7 +8,8 @@ use skill::telemetry::AuditResponse;
 use skill::types::{AgentId, InstallMode, InstallScope, Skill};
 
 use super::install::SkillInstallOutcome;
-use crate::ui::{self, DIM, GREEN, RESET, YELLOW, kebab_to_title};
+use crate::ui::emit;
+use crate::ui::{self, BOLD, BOLD_RED, CYAN, DIM, GREEN, RED, RESET, YELLOW, kebab_to_title};
 
 /// Print a pre-confirmation installation summary box.
 ///
@@ -78,7 +79,7 @@ pub(super) async fn print_installation_summary(
                 }
                 let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
                 let short = ui::shorten_path_with_cwd(&canonical, cwd);
-                out_lines.push(format!("\x1b[36m{short}\x1b[0m"));
+                out_lines.push(format!("{CYAN}{short}{RESET}"));
                 out_lines.extend(build_agent_summary_lines(agents, manager, mode));
 
                 if let Some(ow_agents) = ow_map.get(&s.name) {
@@ -93,14 +94,14 @@ pub(super) async fn print_installation_summary(
     for (group, skill_list) in &grouped {
         let title = kebab_to_title(group);
         lines.push(String::new());
-        lines.push(format!("\x1b[1m{title}\x1b[0m"));
+        lines.push(format!("{BOLD}{title}{RESET}"));
         print_skill_summary(&mut lines, skill_list, &overwrites);
     }
 
     if !ungrouped.is_empty() {
         if !grouped.is_empty() {
             lines.push(String::new());
-            lines.push("\x1b[1mGeneral\x1b[0m".to_owned());
+            lines.push(format!("{BOLD}General{RESET}"));
         }
         print_skill_summary(&mut lines, &ungrouped, &overwrites);
     }
@@ -110,7 +111,7 @@ pub(super) async fn print_installation_summary(
     }
 
     let body = lines.join("\n");
-    let _ = cliclack::note("Installation Summary", body);
+    emit::note("Installation Summary", body);
 }
 
 fn build_agent_summary_lines(
@@ -166,7 +167,7 @@ fn append_outcome_lines(lines: &mut Vec<String>, outcomes: &[&SkillInstallOutcom
 
         if is_copy_mode {
             lines.push(format!(
-                "{GREEN}\u{2713}{RESET} {} {DIM}(copied){RESET}",
+                "{GREEN}✓{RESET} {} {DIM}(copied){RESET}",
                 outcome.skill_name
             ));
             for p in &outcome.copy_paths {
@@ -175,10 +176,10 @@ fn append_outcome_lines(lines: &mut Vec<String>, outcomes: &[&SkillInstallOutcom
             }
         } else if let Some(ref canonical) = outcome.canonical_path {
             let short = ui::shorten_path_with_cwd(canonical, cwd);
-            lines.push(format!("{GREEN}\u{2713}{RESET} {short}"));
+            lines.push(format!("{GREEN}✓{RESET} {short}"));
             append_agent_lines(lines, outcome);
         } else {
-            lines.push(format!("{GREEN}\u{2713}{RESET} {}", outcome.skill_name));
+            lines.push(format!("{GREEN}✓{RESET} {}", outcome.skill_name));
             append_agent_lines(lines, outcome);
         }
     }
@@ -237,14 +238,14 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
         for (group, entries) in &grouped {
             let title = kebab_to_title(group);
             result_lines.push(String::new());
-            result_lines.push(format!("\x1b[1m{title}\x1b[0m"));
+            result_lines.push(format!("{BOLD}{title}{RESET}"));
             append_outcome_lines(&mut result_lines, entries, cwd);
         }
 
         if !ungrouped.is_empty() {
             if !grouped.is_empty() {
                 result_lines.push(String::new());
-                result_lines.push("\x1b[1mGeneral\x1b[0m".to_owned());
+                result_lines.push(format!("{BOLD}General{RESET}"));
             }
             append_outcome_lines(&mut result_lines, &ungrouped, cwd);
         }
@@ -261,7 +262,7 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
         );
 
         let body = result_lines.join("\n");
-        let _ = cliclack::note(title, body);
+        emit::note(title, body);
 
         let symlink_failures: Vec<&str> = outcomes
             .iter()
@@ -269,7 +270,7 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
             .map(String::as_str)
             .collect();
         if !symlink_failures.is_empty() {
-            let _ = cliclack::log::warning(format!(
+            emit::warning(format!(
                 "{YELLOW}Symlinks failed for: {}{RESET}",
                 ui::format_list(
                     &symlink_failures
@@ -278,7 +279,7 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
                         .collect::<Vec<_>>()
                 )
             ));
-            let _ = cliclack::log::remark(format!(
+            emit::remark(format!(
                 "{DIM}Files were copied instead. On Windows, enable Developer Mode for symlink support.{RESET}"
             ));
         }
@@ -287,11 +288,11 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
     if !failed_outcomes.is_empty() {
         let total_fail: usize = failed_outcomes.iter().map(|o| o.failed_agents.len()).sum();
         println!();
-        let _ = cliclack::log::error(format!("\x1b[31mFailed to install {total_fail}\x1b[0m"));
+        emit::error(format!("{RED}Failed to install {total_fail}{RESET}"));
         for outcome in &failed_outcomes {
             for agent in &outcome.failed_agents {
-                let _ = cliclack::log::remark(format!(
-                    " \x1b[31m\u{2717}\x1b[0m {} \u{2192} {agent}: {DIM}installation error{RESET}",
+                emit::remark(format!(
+                    " {RED}✗{RESET} {} → {agent}: {DIM}installation error{RESET}",
                     outcome.skill_name
                 ));
             }
@@ -353,7 +354,7 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
                 let count = a.alerts.unwrap_or(0);
                 if count > 0 {
                     format!(
-                        "\x1b[31m{} alert{}\x1b[0m",
+                        "{RED}{} alert{}{RESET}",
                         count,
                         if count == 1 { "" } else { "s" }
                     )
@@ -366,7 +367,7 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
             .and_then(|d| d.get("snyk"))
             .map_or_else(|| format!("{DIM}--{RESET}"), |a| risk_label(&a.risk));
 
-        let name_col = ansi_pad_end(&format!("\x1b[36m{display_name}\x1b[0m"), name_width + 2);
+        let name_col = ansi_pad_end(&format!("{CYAN}{display_name}{RESET}"), name_width + 2);
         let row = format!(
             "{name_col}{}{}{}",
             ansi_pad_end(&ath_col, 18),
@@ -380,7 +381,7 @@ pub(super) fn print_security_audit(audit_data: &AuditResponse, skills: &[Skill],
     lines.push(format!("{DIM}Details: https://skills.sh/{source}{RESET}"));
 
     let body = lines.join("\n");
-    let _ = cliclack::note("Security Risk Assessments", body);
+    emit::note("Security Risk Assessments", body);
 }
 
 /// Pad a string to a given visible width, ignoring ANSI escape codes.
@@ -405,8 +406,8 @@ fn ansi_pad_end(s: &str, width: usize) -> String {
 
 fn risk_label(risk: &str) -> String {
     match risk {
-        "critical" => "\x1b[31m\x1b[1mCritical Risk\x1b[0m".to_owned(),
-        "high" => "\x1b[31mHigh Risk\x1b[0m".to_owned(),
+        "critical" => format!("{BOLD_RED}Critical Risk{RESET}"),
+        "high" => format!("{RED}High Risk{RESET}"),
         "medium" => format!("{YELLOW}Med Risk{RESET}"),
         "low" => format!("{GREEN}Low Risk{RESET}"),
         "safe" => format!("{GREEN}Safe{RESET}"),

@@ -11,7 +11,7 @@ use super::source_builder::build_global_source;
 use super::stats::{ScopeStats, matches_skill_filter};
 use crate::commands::add::{RunAddOptions, run_add};
 use crate::commands::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
-use crate::ui::{DIM, RESET, TEXT};
+use crate::ui::{CLEAR_EOL, DIM, RESET, TEXT};
 
 /// Refresh global skills that differ from their latest upstream hash.
 pub(super) async fn update(filter: &[String]) -> Result<ScopeStats> {
@@ -52,7 +52,7 @@ pub(super) async fn update(filter: &[String]) -> Result<ScopeStats> {
     let mut updates: Vec<(String, SkillLockEntry)> = Vec::new();
     for (idx, (name, entry)) in checkable.iter().enumerate() {
         print!(
-            "\r{DIM}Checking global skill {}/{}: {}{RESET}\x1b[K",
+            "\r{DIM}Checking global skill {}/{}: {}{RESET}{CLEAR_EOL}",
             idx + 1,
             checkable.len(),
             sanitize_metadata(name),
@@ -74,7 +74,7 @@ pub(super) async fn update(filter: &[String]) -> Result<ScopeStats> {
         }
     }
     if !checkable.is_empty() {
-        print!("\r\x1b[K");
+        print!("\r{CLEAR_EOL}");
     }
 
     let checked_count = checkable.len() + skipped.len();

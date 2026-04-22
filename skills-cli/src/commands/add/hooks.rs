@@ -6,7 +6,8 @@ use std::path::Path;
 use miette::{IntoDiagnostic, Result, miette};
 use skill::types::{AgentId, InstallScope, Skill, SourceType, WellKnownSkill};
 
-use crate::ui::{self, DIM, RESET, TEXT};
+use crate::ui::emit;
+use crate::ui::{self, BOLD, CYAN, DIM, RESET, TEXT, YELLOW};
 
 /// Send install telemetry for git-based sources.
 pub(super) fn send_telemetry(
@@ -115,7 +116,7 @@ pub(super) async fn prompt_security_advisory(
     if is_private == Some(true) && !yes {
         println!();
         println!(
-            "\x1b[33m\u{26a0}  Security notice:\x1b[0m {TEXT}{owner}/{repo}{RESET} is a \x1b[33m\x1b[1mprivate\x1b[0m repository."
+            "{YELLOW}⚠  Security notice:{RESET} {TEXT}{owner}/{repo}{RESET} is a {YELLOW}{BOLD}private{RESET} repository."
         );
         println!(
             "{DIM}   Skills run with full agent permissions. Private repos cannot be audited by others.{RESET}"
@@ -163,13 +164,13 @@ pub(super) async fn prompt_for_find_skills(
     }
 
     println!();
-    drop(cliclack::log::remark(format!(
+    emit::remark(format!(
         "{DIM}One-time prompt - you won't be asked again if you dismiss.{RESET}"
-    )));
+    ));
     ui::drain_input_events();
-    let Ok(yes) = cliclack::confirm(
-        "Install the \x1b[36mfind-skills\x1b[0m skill? It helps your agent discover and suggest skills."
-    )
+    let Ok(yes) = cliclack::confirm(format!(
+        "Install the {CYAN}find-skills{RESET} skill? It helps your agent discover and suggest skills."
+    ))
         .initial_value(true)
         .interact()
     else {
@@ -188,7 +189,7 @@ pub(super) async fn prompt_for_find_skills(
             return;
         }
         println!();
-        drop(cliclack::log::step("Installing find-skills skill..."));
+        emit::step("Installing find-skills skill...");
         let add_args = super::AddArgs {
             source: vec!["vercel-labs/skills".to_owned()],
             global: Some(true),
@@ -204,9 +205,9 @@ pub(super) async fn prompt_for_find_skills(
         };
         drop(Box::pin(super::run(add_args)).await);
     } else {
-        drop(cliclack::log::remark(format!(
+        emit::remark(format!(
             "{DIM}You can install it later with: skills add vercel-labs/skills@find-skills{RESET}"
-        )));
+        ));
     }
 }
 

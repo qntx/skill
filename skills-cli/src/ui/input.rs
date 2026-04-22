@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use crossterm::{event, terminal};
 
+use super::style::CURSOR_SHOW;
+
 /// Drain any stale key events from the terminal input buffer.
 ///
 /// On Windows, crossterm generates both `Press` and `Release` events for every
@@ -50,7 +52,7 @@ impl RawModeGuard {
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
         if self.restore_cursor {
-            let _ = write!(io::stdout(), "\x1b[?25h");
+            let _ = write!(io::stdout(), "{CURSOR_SHOW}");
             let _ = io::stdout().flush();
         }
         let _ = terminal::disable_raw_mode();

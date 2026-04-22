@@ -9,6 +9,7 @@ use std::path::Path;
 
 use miette::{IntoDiagnostic, Result, miette};
 
+use crate::ui::emit;
 use crate::ui::{DIM, GREEN, RESET, TEXT};
 
 const GITHUB_API: &str = "https://api.github.com/repos/qntx/skill/releases/latest";
@@ -30,7 +31,7 @@ pub(crate) async fn run() -> Result<()> {
         .unwrap_or(&release.tag_name);
 
     if !is_newer(current, latest) {
-        let _ = cliclack::log::success(format!("{GREEN}Already up to date ({current}){RESET}"));
+        emit::success(format!("{GREEN}Already up to date ({current}){RESET}"));
         return Ok(());
     }
 
@@ -72,7 +73,7 @@ pub(crate) async fn run() -> Result<()> {
     replace_current_binary(&binary_data)?;
     install_spinner.stop("Installation complete");
 
-    let _ = cliclack::outro(format!(
+    emit::outro(format!(
         "{GREEN}Upgraded to {latest}!{RESET} {DIM}Restart your shell for changes to take effect.{RESET}"
     ));
 

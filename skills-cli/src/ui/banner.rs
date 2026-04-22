@@ -1,6 +1,6 @@
 //! ASCII logo and help banner rendering.
 
-use super::style::{DIM, RESET, TEXT};
+use super::style::{DIM, LOGO_GRAYS, RESET, TEXT};
 
 /// The six-line SKILLS logotype, drawn in a top-down grey gradient.
 const LOGO_LINES: &[&str] = &[
@@ -12,22 +12,12 @@ const LOGO_LINES: &[&str] = &[
     "╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚══════╝",
 ];
 
-/// Grey palette used for the per-line gradient (top → bottom).
-const GRAYS: &[&str] = &[
-    "\x1b[38;5;250m",
-    "\x1b[38;5;248m",
-    "\x1b[38;5;245m",
-    "\x1b[38;5;243m",
-    "\x1b[38;5;240m",
-    "\x1b[38;5;238m",
-];
-
 /// Print the SKILLS ASCII logo with a gradient effect.
 pub(crate) fn show_logo() {
     println!();
     for (i, line) in LOGO_LINES.iter().enumerate() {
-        let first = GRAYS.first().unwrap_or(&"");
-        let gray = GRAYS.get(i).unwrap_or(first);
+        let first = LOGO_GRAYS.first().unwrap_or(&"");
+        let gray = LOGO_GRAYS.get(i).unwrap_or(first);
         println!("{gray}{line}{RESET}");
     }
 }
