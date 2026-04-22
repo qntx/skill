@@ -172,10 +172,10 @@ mod tests {
     #[test]
     fn test_with_defaults_registers_all_builtin_agents() {
         let r = AgentRegistry::with_defaults();
-        // Sanity: at least the TS-known set (41 incl. universal).
+        // Sanity: at least the TS-known set (45 incl. universal).
         assert!(
-            r.len() >= 41,
-            "expected >= 41 built-in agents, got {}",
+            r.len() >= 45,
+            "expected >= 45 built-in agents, got {}",
             r.len()
         );
     }

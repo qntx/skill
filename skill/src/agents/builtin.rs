@@ -357,14 +357,6 @@ const SPECS: &[AgentSpec] = &[
         show_in_universal_list: true,
     },
     AgentSpec {
-        id: "opencode",
-        display_name: "OpenCode",
-        skills_dir: ".agents/skills",
-        global_skills_dir: |e| Some(e.config.join("opencode/skills")),
-        detect_paths: |e| vec![e.config.join("opencode")],
-        show_in_universal_list: true,
-    },
-    AgentSpec {
         id: "openclaw",
         display_name: "OpenClaw",
         skills_dir: "skills",
@@ -376,6 +368,14 @@ const SPECS: &[AgentSpec] = &[
                 e.home.join(".moltbot"),
             ]
         },
+        show_in_universal_list: true,
+    },
+    AgentSpec {
+        id: "opencode",
+        display_name: "OpenCode",
+        skills_dir: ".agents/skills",
+        global_skills_dir: |e| Some(e.config.join("opencode/skills")),
+        detect_paths: |e| vec![e.config.join("opencode")],
         show_in_universal_list: true,
     },
     AgentSpec {
@@ -511,9 +511,10 @@ mod tests {
 
     #[test]
     fn test_spec_count_matches_ts_reference() {
-        // 41 built-in agents including `universal` (TS reference at
-        // `3rdparty/skills/src/agents.ts`).
-        assert_eq!(SPECS.len(), 41);
+        // 45 built-in agents including `universal` (TS reference at
+        // `3rdparty/skills/src/agents.ts`). Kept synced by manual audit:
+        // bumping this count is a conscious TS-parity change.
+        assert_eq!(SPECS.len(), 45);
     }
 
     #[test]

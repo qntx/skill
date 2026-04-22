@@ -28,6 +28,21 @@ const ST_SUFFIX: u8 = b'\\';
 /// Preserves printable characters, tabs, newlines, and carriage returns.
 /// The returned `String` never contains any of the escape forms enumerated
 /// in the module docs.
+///
+/// # Examples
+///
+/// ```
+/// use skill::sanitize::sanitize_metadata;
+///
+/// // Printable Unicode is preserved:
+/// assert_eq!(sanitize_metadata("你好 🌟 café"), "你好 🌟 café");
+///
+/// // ANSI escape sequences are stripped:
+/// assert_eq!(sanitize_metadata("\x1b[2Jpwned"), "pwned");
+///
+/// // Legacy 8-bit C1 controls are stripped too:
+/// assert_eq!(sanitize_metadata("a\u{0080}b"), "ab");
+/// ```
 #[must_use]
 pub fn sanitize_metadata(input: &str) -> String {
     let bytes = input.as_bytes();

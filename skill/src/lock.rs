@@ -88,6 +88,13 @@ impl SkillLockFile {
 /// Uses `$XDG_STATE_HOME/skills/.skill-lock.json` if `XDG_STATE_HOME` is set
 /// and non-empty (matching the TS reference), otherwise falls back to
 /// `~/.agents/.skill-lock.json`.
+///
+/// # Examples
+///
+/// ```no_run
+/// let path = skill::lock::lock_file_path();
+/// assert!(path.ends_with(".skill-lock.json"));
+/// ```
 #[must_use]
 pub fn lock_file_path() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_STATE_HOME")
