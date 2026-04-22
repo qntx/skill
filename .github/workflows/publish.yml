@@ -10,8 +10,8 @@ env:
 
 jobs:
   call-publish:
-    uses: qntx/workflows/.github/workflows/rust-publish.yml@main
+    uses: qntx/workflows/.github/workflows/publish-crates.yml@main
     with:
-      package: "skill skills-cli"
+      packages: "skill skills-cli"
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

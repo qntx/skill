@@ -1,4 +1,4 @@
-name: Rust
+name: CI
 
 on:
   push:
@@ -11,6 +11,6 @@ env:
 
 jobs:
   call-ci:
-    uses: qntx/workflows/.github/workflows/rust.yml@main
+    uses: qntx/workflows/.github/workflows/ci-rust.yml@main
     with:
       submodules: true

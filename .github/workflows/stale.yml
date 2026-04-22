@@ -7,4 +7,4 @@ on:
 
 jobs:
   close-stale:
-    uses: qntx/workflows/.github/workflows/stale.yml@main
+    uses: qntx/workflows/.github/workflows/repo-stale.yml@main

@@ -1,4 +1,4 @@
-name: CD
+name: Release
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   call-cd:
-    uses: qntx/workflows/.github/workflows/rust-cd.yml@main
+    uses: qntx/workflows/.github/workflows/release-rust.yml@main
     with:
       bin: skills
       package: skills-cli
