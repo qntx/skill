@@ -260,7 +260,7 @@ impl SkillManager {
         canonical: &Path,
         cwd: &Path,
     ) {
-        let sanitized = installer::sanitize_name(name);
+        let sanitized = crate::sanitize::sanitize_name(name);
         for agent_id in target_agents {
             let Some(agent) = self.agents.get(agent_id) else {
                 continue;

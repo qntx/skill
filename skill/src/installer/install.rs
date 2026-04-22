@@ -18,9 +18,10 @@ use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
 
 use super::fs::{clean_and_create, copy_directory, create_symlink};
-use super::paths::{agent_base_dir, canonical_skills_dir, is_path_safe, sanitize_name};
+use super::paths::{agent_base_dir, canonical_skills_dir, is_path_safe};
 use crate::agents::AgentRegistry;
 use crate::error::{Result, SkillError};
+use crate::sanitize::sanitize_name;
 use crate::types::{AgentConfig, InstallMode, InstallOptions, InstallResult, InstallScope, Skill};
 
 /// Computed paths and metadata for a skill installation.

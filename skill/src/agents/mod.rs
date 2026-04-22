@@ -7,7 +7,7 @@
 
 mod builtin;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::types::{AgentConfig, AgentId, UNIVERSAL_SKILLS_DIR};
 
@@ -16,6 +16,12 @@ use crate::types::{AgentConfig, AgentId, UNIVERSAL_SKILLS_DIR};
 /// Pre-populated with the built-in agents via [`AgentRegistry::with_defaults`].
 /// Agent frameworks can register additional agents with
 /// [`AgentRegistry::register`].
+///
+/// Backed by a [`BTreeMap`] so iteration order is always ascending-by-id,
+/// which is exactly what every caller needs (`all_ids`, `universal_agents`,
+/// `non_universal_agents`, `detect_installed`). This removes four separate
+/// `.sort()` trailers at effectively zero runtime cost (the 45-element
+/// lookup table makes `O(log n)` vs `O(1)` indistinguishable).
 ///
 /// # Examples
 ///
@@ -29,7 +35,7 @@ use crate::types::{AgentConfig, AgentId, UNIVERSAL_SKILLS_DIR};
 #[derive(Debug)]
 pub struct AgentRegistry {
     /// Map of agent IDs to their configurations.
-    agents: HashMap<AgentId, AgentConfig>,
+    agents: BTreeMap<AgentId, AgentConfig>,
 }
 
 impl Default for AgentRegistry {
@@ -51,9 +57,9 @@ impl AgentRegistry {
 
     /// Create an empty registry with no agents.
     #[must_use]
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
-            agents: HashMap::new(),
+            agents: BTreeMap::new(),
         }
     }
 
@@ -71,9 +77,7 @@ impl AgentRegistry {
     /// Return all registered agent identifiers, sorted alphabetically.
     #[must_use]
     pub fn all_ids(&self) -> Vec<AgentId> {
-        let mut ids: Vec<_> = self.agents.keys().cloned().collect();
-        ids.sort();
-        ids
+        self.agents.keys().cloned().collect()
     }
 
     /// Return all registered agent configurations.
@@ -84,11 +88,11 @@ impl AgentRegistry {
 
     /// Detect which agents are installed by probing their known paths.
     ///
-    /// Matches the TS reference `agents.ts::detectInstalledAgents`, which
-    /// uses `Promise.all` to fan-out probes across all registered agents.
-    /// Each task short-circuits on the first existing path, so best-case
-    /// latency is a single `try_exists` call regardless of how many
-    /// `detect_paths` an agent declares.
+    /// Matches the TS reference `agents.ts::detectInstalledAgents`: uses
+    /// [`tokio::task::JoinSet`] to fan-out probes across all registered
+    /// agents. Each task short-circuits on the first existing path, so
+    /// best-case latency is a single `try_exists` call regardless of how
+    /// many `detect_paths` an agent declares.
     ///
     /// Returns the sorted list of installed agent IDs.
     pub async fn detect_installed(&self) -> Vec<AgentId> {
@@ -96,7 +100,11 @@ impl AgentRegistry {
         for (id, config) in &self.agents {
             let id = id.clone();
             let paths = config.detect_paths.clone();
-            set.spawn(async move { any_path_exists(&paths).await.then_some(id) });
+            set.spawn(async move {
+                crate::installer::any_path_exists(&paths)
+                    .await
+                    .then_some(id)
+            });
         }
 
         let mut installed = Vec::with_capacity(set.len());
@@ -114,29 +122,27 @@ impl AgentRegistry {
 
     /// Return agent IDs that use the universal `.agents/skills` directory
     /// and appear in the universal list.
+    ///
+    /// Result is sorted ascending thanks to the backing `BTreeMap`.
     #[must_use]
     pub fn universal_agents(&self) -> Vec<AgentId> {
-        let mut ids: Vec<_> = self
-            .agents
+        self.agents
             .iter()
             .filter(|(_, c)| c.skills_dir == UNIVERSAL_SKILLS_DIR && c.show_in_universal_list)
             .map(|(id, _)| id.clone())
-            .collect();
-        ids.sort();
-        ids
+            .collect()
     }
 
     /// Return agent IDs that use agent-specific (non-universal) directories.
+    ///
+    /// Result is sorted ascending thanks to the backing `BTreeMap`.
     #[must_use]
     pub fn non_universal_agents(&self) -> Vec<AgentId> {
-        let mut ids: Vec<_> = self
-            .agents
+        self.agents
             .iter()
             .filter(|(_, c)| c.skills_dir != UNIVERSAL_SKILLS_DIR)
             .map(|(id, _)| id.clone())
-            .collect();
-        ids.sort();
-        ids
+            .collect()
     }
 
     /// Check whether an agent uses the universal `.agents/skills` directory.
@@ -158,20 +164,6 @@ impl AgentRegistry {
     pub fn is_empty(&self) -> bool {
         self.agents.is_empty()
     }
-}
-
-/// Return true as soon as any of `paths` exists on disk.
-///
-/// Short-circuits on the first hit so detection does not pay for probing
-/// every fallback when one would do — matches the TS `||` chain in each
-/// `detectInstalled` closure.
-async fn any_path_exists(paths: &[std::path::PathBuf]) -> bool {
-    for path in paths {
-        if tokio::fs::try_exists(path).await.unwrap_or(false) {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]

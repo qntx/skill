@@ -32,24 +32,26 @@ pub(super) async fn print_installation_summary(
 
     for s in skills {
         for aid in agents {
-            if let Some(config) = manager.agents().get(aid) {
-                let skill_name = s.name.clone();
-                let display_name = config.display_name.clone();
-                let skills_dir = config.skills_dir.clone();
-                let global_dir = config.global_skills_dir.clone();
-                let cwd = cwd.to_path_buf();
-                join_set.spawn(async move {
-                    let installed = skill::installer::is_skill_installed_owned(
-                        skill_name.clone(),
-                        skills_dir,
-                        global_dir,
-                        scope,
-                        cwd,
-                    )
-                    .await;
-                    (skill_name, display_name, installed)
-                });
-            }
+            let Some(config) = manager.agents().get(aid) else {
+                continue;
+            };
+            // Pre-compute the candidate on-disk locations synchronously so
+            // the spawned task only has to do the (async) `try_exists`
+            // probes — no cloning of `AgentConfig` internals, no
+            // `'static` lifetime gymnastics.
+            let paths = skill::installer::candidate_install_paths(
+                &s.name,
+                &config.skills_dir,
+                config.global_skills_dir.as_deref(),
+                scope,
+                cwd,
+            );
+            let skill_name = s.name.clone();
+            let display_name = config.display_name.clone();
+            join_set.spawn(async move {
+                let installed = skill::installer::any_path_exists(&paths).await;
+                (skill_name, display_name, installed)
+            });
         }
     }
 

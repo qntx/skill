@@ -1,57 +1,17 @@
-//! Path and name utilities for skill installation.
+//! Path utilities for skill installation.
+//!
+//! Sync, allocation-explicit computations that turn a skill name plus an
+//! [`AgentConfig`] / [`InstallScope`] / cwd into the filesystem locations
+//! the skill may occupy. All I/O lives in the sibling `scan` module; the
+//! two concerns are deliberately kept apart so tests can reason about path
+//! resolution without touching the filesystem and callers can pre-compute
+//! paths on the sync side before spawning async probes.
 
 use std::path::{Path, PathBuf};
 
 use crate::agents::AgentRegistry;
+use crate::sanitize::{candidate_slugs, sanitize_name};
 use crate::types::{AGENTS_DIR, AgentConfig, InstallScope, SKILLS_SUBDIR};
-
-/// Sanitize a skill name for safe use as a directory name.
-///
-/// Converts to lowercase, replaces unsafe characters with hyphens, strips
-/// leading/trailing dots and hyphens, and limits to 255 characters.
-#[must_use]
-pub fn sanitize_name(name: &str) -> String {
-    let sanitized: String = name
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-
-    // Collapse consecutive hyphens
-    let mut collapsed = String::with_capacity(sanitized.len());
-    let mut prev_hyphen = false;
-    for ch in sanitized.chars() {
-        if ch == '-' {
-            if !prev_hyphen {
-                collapsed.push(ch);
-            }
-            prev_hyphen = true;
-        } else {
-            collapsed.push(ch);
-            prev_hyphen = false;
-        }
-    }
-
-    let trimmed = collapsed.trim_matches(|c: char| c == '.' || c == '-');
-    if trimmed.is_empty() {
-        return "unnamed-skill".to_owned();
-    }
-    if trimmed.len() <= 255 {
-        return trimmed.to_owned();
-    }
-    // Truncate at a char boundary to avoid UTF-8 panic
-    let mut end = 255;
-    while !trimmed.is_char_boundary(end) {
-        end -= 1;
-    }
-    trimmed[..end].to_owned()
-}
 
 /// Validate that `target_path` is within `base_path`.
 ///
@@ -99,43 +59,76 @@ pub fn canonical_install_path(skill_name: &str, scope: InstallScope, cwd: &Path)
     canonical_skills_dir(scope, cwd).join(sanitize_name(skill_name))
 }
 
+/// Resolve the install directory that would hold `slug` under an agent,
+/// returning `None` when the target is out of bounds or the agent has no
+/// global directory in global scope.
+///
+/// Does not re-sanitize: callers pass in the final directory name already.
+fn resolve_variant_path(
+    slug: &str,
+    project_skills_dir: &str,
+    global_skills_dir: Option<&Path>,
+    scope: InstallScope,
+    cwd: &Path,
+) -> Option<PathBuf> {
+    let target_base = match scope {
+        InstallScope::Global => global_skills_dir?.to_path_buf(),
+        InstallScope::Project => cwd.join(project_skills_dir),
+    };
+    let target_dir = target_base.join(slug);
+    is_path_safe(&target_base, &target_dir).then_some(target_dir)
+}
+
+/// Compute every on-disk location a skill may occupy under a specific agent.
+///
+/// Sync, pure, and allocation-explicit. The returned `Vec` holds one or two
+/// [`PathBuf`]s in priority order (canonical sanitize first, then the
+/// legacy TS slug if it differs). Out-of-bounds or scope-unsupported
+/// combinations (e.g. global scope for an agent without a `global_skills_dir`)
+/// yield an empty vec.
+///
+/// This is the building block callers use when they need to probe multiple
+/// `(skill × agent)` pairs in parallel: compute all paths synchronously,
+/// then move them into spawned tasks that call the async
+/// [`crate::installer::any_path_exists`] primitive.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+/// use skill::installer::candidate_install_paths;
+/// use skill::types::InstallScope;
+///
+/// let cwd = Path::new("/project");
+/// let paths = candidate_install_paths(
+///     "My Skill!",
+///     ".claude/skills",
+///     None,
+///     InstallScope::Project,
+///     cwd,
+/// );
+/// assert!(!paths.is_empty());
+/// assert!(paths[0].ends_with("my-skill"));
+/// ```
+#[must_use]
+pub fn candidate_install_paths(
+    skill_name: &str,
+    project_skills_dir: &str,
+    global_skills_dir: Option<&Path>,
+    scope: InstallScope,
+    cwd: &Path,
+) -> Vec<PathBuf> {
+    candidate_slugs(skill_name)
+        .into_iter()
+        .filter_map(|slug| {
+            resolve_variant_path(&slug, project_skills_dir, global_skills_dir, scope, cwd)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sanitize_basic() {
-        assert_eq!(sanitize_name("My Skill Name"), "my-skill-name");
-        assert_eq!(sanitize_name("../../evil"), "evil");
-        assert_eq!(sanitize_name("hello_world.v2"), "hello_world.v2");
-    }
-
-    #[test]
-    fn sanitize_empty_and_dots() {
-        assert_eq!(sanitize_name("..."), "unnamed-skill");
-        assert_eq!(sanitize_name(""), "unnamed-skill");
-        assert_eq!(sanitize_name("---"), "unnamed-skill");
-    }
-
-    #[test]
-    fn sanitize_consecutive_hyphens_collapsed() {
-        assert_eq!(sanitize_name("a   b   c"), "a-b-c");
-        assert_eq!(sanitize_name("a---b"), "a-b");
-    }
-
-    #[test]
-    fn sanitize_unicode() {
-        assert_eq!(sanitize_name("日本語スキル"), "unnamed-skill");
-        assert_eq!(sanitize_name("café-skill"), "caf-skill");
-    }
-
-    #[test]
-    fn sanitize_truncates_at_255() {
-        let long = "a".repeat(300);
-        let result = sanitize_name(&long);
-        assert!(result.len() <= 255);
-        assert_eq!(result.len(), 255);
-    }
 
     #[test]
     fn path_safe_rejects_traversal() {
@@ -177,5 +170,53 @@ mod tests {
         let cwd = Path::new("/project");
         let path = canonical_install_path("My Skill!", InstallScope::Project, cwd);
         assert_eq!(path, PathBuf::from("/project/.agents/skills/my-skill"));
+    }
+
+    #[test]
+    fn candidate_install_paths_single_variant_for_plain_name() {
+        let cwd = Path::new("/project");
+        let paths = candidate_install_paths(
+            "my-skill",
+            ".claude/skills",
+            None,
+            InstallScope::Project,
+            cwd,
+        );
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("/project/.claude/skills/my-skill")]
+        );
+    }
+
+    #[test]
+    fn candidate_install_paths_emits_both_variants_for_punctuation() {
+        let cwd = Path::new("/project");
+        let paths = candidate_install_paths(
+            "hello!world",
+            ".claude/skills",
+            None,
+            InstallScope::Project,
+            cwd,
+        );
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("/project/.claude/skills/hello-world"),
+                PathBuf::from("/project/.claude/skills/hello!world"),
+            ]
+        );
+    }
+
+    #[test]
+    fn candidate_install_paths_returns_empty_without_global_dir() {
+        let cwd = Path::new("/project");
+        let paths = candidate_install_paths(
+            "my-skill",
+            ".claude/skills",
+            None,
+            InstallScope::Global,
+            cwd,
+        );
+        assert!(paths.is_empty());
     }
 }

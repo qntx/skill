@@ -1,9 +1,15 @@
 //! Scanning and querying installed skills.
+//!
+//! Owns every async filesystem probe the installer layer needs. Callers
+//! that want to batch probes (e.g. `skill × agent` combinations) should
+//! pre-compute paths via [`super::candidate_install_paths`] and then spawn
+//! [`any_path_exists`] for each — this keeps the sync/async split clean
+//! and makes the code trivially `Send + 'static` for `tokio::spawn`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::paths::{canonical_skills_dir, is_path_safe, sanitize_name};
+use super::paths::{candidate_install_paths, canonical_skills_dir};
 use crate::agents::AgentRegistry;
 use crate::error::Result;
 use crate::skills::parse_skill_md;
@@ -200,195 +206,45 @@ async fn scan_skills_dir_for_agent(
     }
 }
 
-/// Resolve the install directory that would hold `slug` under an agent's
-/// skills dir, returning `None` when the target is out of bounds or the
-/// agent has no global directory in global scope.
+/// Async I/O primitive: return `true` as soon as any of `paths` exists.
 ///
-/// Unlike the public `sanitize_name` helper, this does **not** re-sanitize
-/// the slug — callers are expected to have materialised the final directory
-/// name already (via `sanitize_name`, `legacy_skill_slug`, or similar).
-fn resolve_variant_path(
-    slug: &str,
-    project_skills_dir: &str,
-    global_skills_dir: Option<&Path>,
-    scope: InstallScope,
-    cwd: &Path,
-) -> Option<PathBuf> {
-    let target_base = match scope {
-        InstallScope::Global => global_skills_dir?.to_path_buf(),
-        InstallScope::Project => cwd.join(project_skills_dir),
-    };
-    let target_dir = target_base.join(slug);
-    is_path_safe(&target_base, &target_dir).then_some(target_dir)
-}
-
-/// On-disk directory-name variants a skill may occupy.
+/// Short-circuits on the first hit so probing does not pay for a hundred
+/// `try_exists` calls when one would do. Any filesystem error is treated
+/// as "does not exist" — this matches the TS `.catch(() => null)` idiom
+/// used throughout the reference installer.
 ///
-/// The primary candidate is always `sanitize_name(skill_name)` (the
-/// convention this crate installs under). A second **legacy** candidate is
-/// appended when it differs — matching the TS reference
-/// `installer.ts:972-981 possibleNames`, which accommodates:
-///
-/// - skills installed by older tooling with looser slug rules,
-/// - handcrafted directories (e.g. `"Git Review"` under `.cursor/skills/`),
-/// - forks that ship with their own slug variants.
-///
-/// Returns at least one element and never duplicates.
-fn candidate_slugs(skill_name: &str) -> Vec<String> {
-    let sanitized = sanitize_name(skill_name);
-    let legacy = legacy_skill_slug(skill_name);
-    if legacy.is_empty() || legacy == sanitized {
-        vec![sanitized]
-    } else {
-        vec![sanitized, legacy]
-    }
-}
-
-/// Legacy slug algorithm preserved from the TS reference.
-///
-/// Mirrors the TS snippet embedded in `installer.ts:972-981`:
-///
-/// ```text
-/// name.toLowerCase()
-///     .replace(/\s+/g, '-')
-///     .replace(/[\/\\:\0]/g, '')
-/// ```
-///
-/// Runs of ASCII whitespace collapse into a single `-`, path separators
-/// (`/`, `\`), colon, and NUL are dropped, and every other character —
-/// including punctuation like `!` and `.` — is kept as-is after Unicode
-/// lowercasing. This is intentionally more permissive than the stricter
-/// `sanitize_name` used for fresh installs.
-fn legacy_skill_slug(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut in_space = false;
-    for ch in name.chars() {
-        if ch.is_ascii_whitespace() {
-            if !in_space {
-                out.push('-');
-                in_space = true;
-            }
-            continue;
+/// Empty input returns `false` immediately without any I/O.
+pub async fn any_path_exists(paths: &[PathBuf]) -> bool {
+    for path in paths {
+        if tokio::fs::try_exists(path).await.unwrap_or(false) {
+            return true;
         }
-        in_space = false;
-        if matches!(ch, '/' | '\\' | ':' | '\0') {
-            continue;
-        }
-        // `char::to_lowercase` returns an iterator because some code points
-        // lowercase to multiple chars (e.g. `İ` → `i\u{307}`), matching JS
-        // `String#toLowerCase` output byte-for-byte.
-        out.extend(ch.to_lowercase());
     }
-    out
+    false
 }
 
 /// Check if a skill is installed for an agent.
 ///
-/// Probes both the canonical sanitize of `skill_name` and the legacy TS
-/// slug variant (see the private `candidate_slugs` helper) in order,
-/// returning true on the first existing path. This lets skills installed
-/// under legacy / handcrafted directory names still be detected.
+/// Thin wrapper over [`candidate_install_paths`] + [`any_path_exists`] —
+/// probes the canonical sanitize first, then the legacy TS slug, and
+/// returns `true` on the first existing path.
+///
+/// Callers that need to probe many `(skill × agent)` pairs in parallel
+/// should use [`candidate_install_paths`] directly (sync, pure) to
+/// compute every path up front, then spawn [`any_path_exists`] for each
+/// batch — the per-call helper composition is `Send + 'static`-friendly.
 pub async fn is_skill_installed(
     skill_name: &str,
     agent: &AgentConfig,
     scope: InstallScope,
     cwd: &Path,
 ) -> bool {
-    for slug in candidate_slugs(skill_name) {
-        if let Some(target) = resolve_variant_path(
-            &slug,
-            &agent.skills_dir,
-            agent.global_skills_dir.as_deref(),
-            scope,
-            cwd,
-        ) && tokio::fs::try_exists(&target).await.unwrap_or(false)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// Check if a skill is installed — owned-value variant for `tokio::spawn`.
-///
-/// Accepts fully owned values instead of `&AgentConfig` so the returned
-/// future is `Send + 'static`, safe for parallel spawning. Honours the same
-/// candidate-slug probing as [`is_skill_installed`] (canonical sanitize
-/// first, then the legacy TS slug).
-pub async fn is_skill_installed_owned(
-    skill_name: String,
-    project_skills_dir: String,
-    global_skills_dir: Option<PathBuf>,
-    scope: InstallScope,
-    cwd: PathBuf,
-) -> bool {
-    for slug in candidate_slugs(&skill_name) {
-        if let Some(target) = resolve_variant_path(
-            &slug,
-            &project_skills_dir,
-            global_skills_dir.as_deref(),
-            scope,
-            &cwd,
-        ) && tokio::fs::try_exists(&target).await.unwrap_or(false)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn candidate_slugs_returns_single_entry_when_variants_align() {
-        // Plain names produce identical sanitize + legacy output.
-        assert_eq!(candidate_slugs("my-skill"), vec!["my-skill"]);
-        assert_eq!(candidate_slugs("deploy"), vec!["deploy"]);
-    }
-
-    #[test]
-    fn candidate_slugs_adds_legacy_variant_when_punctuation_differs() {
-        // `!` is mapped to `-` by sanitize_name but kept by TS legacy slug.
-        let variants = candidate_slugs("hello!world");
-        assert_eq!(variants, vec!["hello-world", "hello!world"]);
-    }
-
-    #[test]
-    fn candidate_slugs_adds_legacy_variant_when_path_separator_differs() {
-        // `/` is mapped to `-` by sanitize_name but dropped by TS legacy slug.
-        let variants = candidate_slugs("scope/name");
-        assert_eq!(variants, vec!["scope-name", "scopename"]);
-    }
-
-    #[test]
-    fn legacy_slug_collapses_whitespace_runs_to_single_hyphen() {
-        assert_eq!(legacy_skill_slug("Git  Review"), "git-review");
-        assert_eq!(legacy_skill_slug("a\t  b"), "a-b");
-    }
-
-    #[test]
-    fn legacy_slug_keeps_generic_punctuation() {
-        // TS algorithm only strips `\s+` (→ `-`) and `[\/\\:\0]` (→ ``).
-        // Everything else — including `!`, `.`, `_` — survives.
-        assert_eq!(legacy_skill_slug("hello!world"), "hello!world");
-        assert_eq!(legacy_skill_slug("a.b"), "a.b");
-        assert_eq!(legacy_skill_slug("x_y"), "x_y");
-    }
-
-    #[test]
-    fn legacy_slug_drops_path_separators_and_nul() {
-        assert_eq!(legacy_skill_slug("scope/name"), "scopename");
-        assert_eq!(legacy_skill_slug("win\\path"), "winpath");
-        assert_eq!(legacy_skill_slug("k:v"), "kv");
-        assert_eq!(legacy_skill_slug("a\0b"), "ab");
-    }
-
-    #[test]
-    fn legacy_slug_lowercases_full_unicode() {
-        // `.to_lowercase()` applies Unicode rules like TS `toLowerCase`.
-        assert_eq!(legacy_skill_slug("CAFÉ"), "café");
-        assert_eq!(legacy_skill_slug("Δέλτα"), "δέλτα");
-    }
+    let paths = candidate_install_paths(
+        skill_name,
+        &agent.skills_dir,
+        agent.global_skills_dir.as_deref(),
+        scope,
+        cwd,
+    );
+    any_path_exists(&paths).await
 }

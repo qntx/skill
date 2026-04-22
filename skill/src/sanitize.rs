@@ -1,13 +1,17 @@
-//! Terminal control sequence sanitization (CWE-150).
+//! Untrusted-string → safe-string transformations.
 //!
-//! Strips ANSI escape sequences and control characters from untrusted strings
-//! (skill `name` / `description`, remote index entries, repository metadata)
+//! This module is the single home for every rule that turns user- or
+//! network-supplied text into something safe to render, to store on disk,
+//! or to send to the skills.sh APIs. Three concerns live here:
+//!
+//! # 1. Terminal control sequence sanitization (CWE-150)
+//!
+//! [`sanitize_metadata`] strips ANSI escapes and control bytes from skill
+//! `name` / `description`, remote index entries, and repository metadata
 //! before they are rendered to the terminal. Without this mitigation a
 //! malicious skill author can forge CLI output, clear the screen, or trick
-//! users into approving installations they did not intend.
-//!
-//! Coverage follows the TypeScript reference at
-//! `3rdparty/skills/src/sanitize.ts`:
+//! users into approving installations they did not intend. Coverage follows
+//! the TypeScript reference at `3rdparty/skills/src/sanitize.ts`:
 //!
 //! - CSI (`ESC [ ... <final-byte>`)
 //! - OSC (`ESC ] ... (BEL | ESC \)`)
@@ -15,6 +19,25 @@
 //! - Bare `ESC <intermediate>? <final>` two-byte forms
 //! - C0 controls (`0x00..0x1f`, except `\t`, `\n`, `\r`)
 //! - DEL (`0x7f`) and C1 controls (`0x80..0x9f`)
+//!
+//! # 2. Safe directory naming
+//!
+//! [`sanitize_name`] turns a free-form skill name into a directory name
+//! that is safe on every major filesystem — lowercasing, replacing unsafe
+//! characters with hyphens, collapsing hyphen runs, trimming dots, and
+//! bounding the length. This is what the installer uses to materialise
+//! canonical skill directories.
+//!
+//! # 3. URL-safe slugification
+//!
+//! [`to_skill_slug`] is a byte-for-byte port of the TS
+//! `blob.ts::toSkillSlug` used by the skills.sh APIs. It is stricter than
+//! [`sanitize_name`] (drops all non-`[a-z0-9-]` characters) and must stay
+//! byte-compatible with the server-side slugifier.
+//!
+//! The crate-private `legacy_skill_slug` preserves an older, more
+//! permissive slug algorithm the TS installer still accepts so skills laid
+//! down under handcrafted directory names stay discoverable.
 
 /// ESC byte (`0x1b`) — the start of every ANSI escape sequence.
 const ESC: u8 = 0x1b;
@@ -236,6 +259,121 @@ pub fn to_skill_slug(name: &str) -> String {
     out
 }
 
+/// Sanitize a skill name for safe use as a directory name.
+///
+/// Converts to lowercase, replaces any character outside `[a-z0-9._]` with
+/// `-`, collapses consecutive hyphens, trims leading / trailing dots and
+/// hyphens, and clamps the result to 255 bytes (truncating on a UTF-8
+/// boundary). An empty or all-punctuation input yields `"unnamed-skill"`.
+///
+/// This is the canonical directory-name rule used by the installer. It is
+/// more permissive than [`to_skill_slug`] — it keeps `.` and `_` — because
+/// filesystems accept those just fine, whereas URL slugs must not.
+#[must_use]
+pub fn sanitize_name(name: &str) -> String {
+    let sanitized: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    // Collapse consecutive hyphens.
+    let mut collapsed = String::with_capacity(sanitized.len());
+    let mut prev_hyphen = false;
+    for ch in sanitized.chars() {
+        if ch == '-' {
+            if !prev_hyphen {
+                collapsed.push(ch);
+            }
+            prev_hyphen = true;
+        } else {
+            collapsed.push(ch);
+            prev_hyphen = false;
+        }
+    }
+
+    let trimmed = collapsed.trim_matches(|c: char| c == '.' || c == '-');
+    if trimmed.is_empty() {
+        return "unnamed-skill".to_owned();
+    }
+    if trimmed.len() <= 255 {
+        return trimmed.to_owned();
+    }
+    // Truncate at a UTF-8 char boundary so we never slice mid-codepoint.
+    let mut end = 255;
+    while !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    trimmed[..end].to_owned()
+}
+
+/// Legacy slug algorithm preserved from the TS reference installer.
+///
+/// Mirrors the TS snippet embedded in `installer.ts:972-981`:
+///
+/// ```text
+/// name.toLowerCase()
+///     .replace(/\s+/g, '-')
+///     .replace(/[\/\\:\0]/g, '')
+/// ```
+///
+/// Runs of ASCII whitespace collapse into a single `-`, path separators
+/// (`/`, `\`), colon, and NUL are dropped, and every other character —
+/// including punctuation like `!` and `.` — is kept as-is after Unicode
+/// lowercasing. This is intentionally more permissive than
+/// [`sanitize_name`] so the installer can still recognise directories laid
+/// down by older versions or by hand.
+#[must_use]
+pub(crate) fn legacy_skill_slug(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut in_space = false;
+    for ch in name.chars() {
+        if ch.is_ascii_whitespace() {
+            if !in_space {
+                out.push('-');
+                in_space = true;
+            }
+            continue;
+        }
+        in_space = false;
+        if matches!(ch, '/' | '\\' | ':' | '\0') {
+            continue;
+        }
+        // `char::to_lowercase` returns an iterator because some code points
+        // lowercase to multiple chars (e.g. `İ` → `i\u{307}`), matching JS
+        // `String#toLowerCase` output byte-for-byte.
+        out.extend(ch.to_lowercase());
+    }
+    out
+}
+
+/// On-disk directory-name variants a skill may occupy.
+///
+/// The primary candidate is always `sanitize_name(skill_name)` (the
+/// convention this crate installs under). A second **legacy** candidate is
+/// appended when it differs — matching the TS reference
+/// `installer.ts:972-981 possibleNames`, which accommodates skills
+/// installed by older tooling with looser slug rules, handcrafted
+/// directories, or forks that ship with their own slug variants.
+///
+/// Returns one or two elements in priority order and never duplicates.
+#[must_use]
+pub(crate) fn candidate_slugs(skill_name: &str) -> Vec<String> {
+    let sanitized = sanitize_name(skill_name);
+    let legacy = legacy_skill_slug(skill_name);
+    if legacy.is_empty() || legacy == sanitized {
+        vec![sanitized]
+    } else {
+        vec![sanitized, legacy]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +531,93 @@ mod tests {
         assert_eq!(
             to_skill_slug("   Multi_Word   Skill!! "),
             "multi-word-skill"
+        );
+    }
+
+    #[test]
+    fn sanitize_name_basic() {
+        assert_eq!(sanitize_name("My Skill Name"), "my-skill-name");
+        assert_eq!(sanitize_name("../../evil"), "evil");
+        assert_eq!(sanitize_name("hello_world.v2"), "hello_world.v2");
+    }
+
+    #[test]
+    fn sanitize_name_empty_and_dots() {
+        assert_eq!(sanitize_name("..."), "unnamed-skill");
+        assert_eq!(sanitize_name(""), "unnamed-skill");
+        assert_eq!(sanitize_name("---"), "unnamed-skill");
+    }
+
+    #[test]
+    fn sanitize_name_collapses_consecutive_hyphens() {
+        assert_eq!(sanitize_name("a   b   c"), "a-b-c");
+        assert_eq!(sanitize_name("a---b"), "a-b");
+    }
+
+    #[test]
+    fn sanitize_name_handles_unicode() {
+        assert_eq!(sanitize_name("日本語スキル"), "unnamed-skill");
+        assert_eq!(sanitize_name("café-skill"), "caf-skill");
+    }
+
+    #[test]
+    fn sanitize_name_truncates_at_255_bytes() {
+        let long = "a".repeat(300);
+        let result = sanitize_name(&long);
+        assert!(result.len() <= 255);
+        assert_eq!(result.len(), 255);
+    }
+
+    #[test]
+    fn legacy_slug_collapses_whitespace_runs_to_single_hyphen() {
+        assert_eq!(legacy_skill_slug("Git  Review"), "git-review");
+        assert_eq!(legacy_skill_slug("a\t  b"), "a-b");
+    }
+
+    #[test]
+    fn legacy_slug_keeps_generic_punctuation() {
+        // TS algorithm only strips `\s+` (→ `-`) and `[\/\\:\0]` (→ ``).
+        // Everything else — including `!`, `.`, `_` — survives.
+        assert_eq!(legacy_skill_slug("hello!world"), "hello!world");
+        assert_eq!(legacy_skill_slug("a.b"), "a.b");
+        assert_eq!(legacy_skill_slug("x_y"), "x_y");
+    }
+
+    #[test]
+    fn legacy_slug_drops_path_separators_and_nul() {
+        assert_eq!(legacy_skill_slug("scope/name"), "scopename");
+        assert_eq!(legacy_skill_slug("win\\path"), "winpath");
+        assert_eq!(legacy_skill_slug("k:v"), "kv");
+        assert_eq!(legacy_skill_slug("a\0b"), "ab");
+    }
+
+    #[test]
+    fn legacy_slug_lowercases_full_unicode() {
+        assert_eq!(legacy_skill_slug("CAFÉ"), "café");
+        assert_eq!(legacy_skill_slug("Δέλτα"), "δέλτα");
+    }
+
+    #[test]
+    fn candidate_slugs_returns_single_entry_when_variants_align() {
+        assert_eq!(candidate_slugs("my-skill"), vec!["my-skill"]);
+        assert_eq!(candidate_slugs("deploy"), vec!["deploy"]);
+    }
+
+    #[test]
+    fn candidate_slugs_adds_legacy_variant_when_punctuation_differs() {
+        // `!` is mapped to `-` by sanitize_name but kept by TS legacy slug.
+        assert_eq!(
+            candidate_slugs("hello!world"),
+            vec!["hello-world", "hello!world"]
+        );
+    }
+
+    #[test]
+    fn candidate_slugs_adds_legacy_variant_when_path_separator_differs() {
+        // `/` is mapped to `-` by sanitize_name but dropped by TS legacy slug.
+        assert_eq!(
+            candidate_slugs("scope/name"),
+            vec!["scope-name", "scopename"]
         );
     }
 }

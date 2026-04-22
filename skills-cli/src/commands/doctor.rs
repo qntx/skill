@@ -256,7 +256,7 @@ async fn check_local_lock_consistency(cwd: &Path, findings: &mut Vec<Finding>) {
     let mut missing = 0u32;
 
     for name in lock.skills.keys() {
-        let sanitized = skill::installer::sanitize_name(name);
+        let sanitized = skill::sanitize::sanitize_name(name);
         let expected = canonical_base.join(&sanitized);
         if !expected.exists() {
             missing += 1;
