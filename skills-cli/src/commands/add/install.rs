@@ -37,6 +37,46 @@ pub(super) async fn resolve_source(
         return Ok((local_path.clone(), None));
     }
 
+    // Try the blob install fast-path first for GitHub sources.
+    //
+    // Downloads only the target skill folder via the GitHub Trees API +
+    // raw.githubusercontent.com, avoiding full `git clone` for large repos
+    // (the mitigation upstream introduced for issues like heygen-com's
+    // hyperframes, vercel-labs/skills#300).
+    //
+    // `try_blob_install` returns `Ok(None)` on any non-fatal error so we
+    // silently fall back to `git clone` in that case.
+    if parsed.source_type == SourceType::Github
+        && let Some(owner_repo) = skill::source::get_owner_repo(parsed)
+    {
+        // For shorthand `owner/repo/subpath`, `subpath` already holds the
+        // right prefix; for tree URLs the subpath was extracted from the
+        // path, so it also works without extra massaging.
+        let token = skill::github::get_token();
+        match skill::blob::try_blob_install(
+            &owner_repo,
+            parsed.subpath.as_deref(),
+            parsed.git_ref.as_deref(),
+            token.as_deref(),
+        )
+        .await
+        {
+            Ok(Some(td)) => {
+                let path = td.path().to_path_buf();
+                return Ok((path, Some(td)));
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    owner_repo,
+                    "blob install skipped, falling back to git clone"
+                );
+            }
+            Err(e) => {
+                tracing::debug!(owner_repo, error = %e, "blob install failed, falling back to git clone");
+            }
+        }
+    }
+
     let td = skill::git::clone_repo(&parsed.url, parsed.git_ref.as_deref())
         .await
         .map_err(|e| miette!("{e}"))?;

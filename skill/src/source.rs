@@ -28,13 +28,138 @@ static SOURCE_ALIASES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock:
 /// - `GitLab` URLs (with `/-/tree/` pattern)
 /// - Well-known HTTP(S) URLs (non-GitHub/GitLab)
 /// - Prefix shorthands (`github:owner/repo`, `gitlab:owner/repo`)
+/// - Fragment refs (`…#branch` or `…#branch@skill-filter`) for git sources
 /// - Direct git URLs (fallback)
 #[must_use]
+pub fn parse_source(input: &str) -> ParsedSource {
+    // Strip a trailing `#ref[@filter]` fragment before any other processing so
+    // downstream regex matches see clean git URLs / shorthands. Matches the TS
+    // reference `parseFragmentRef` behavior exactly.
+    let FragmentRef {
+        base,
+        ref_: fragment_ref,
+        filter: fragment_filter,
+    } = parse_fragment_ref(input);
+
+    let mut parsed = parse_source_inner(&base);
+
+    // Merge fragment data: an explicit `tree/<ref>` in the URL wins over the
+    // fragment ref (matches TS `ref || fragmentRef`). Shorthand `@skill` wins
+    // over the fragment filter by the same rule.
+    if parsed.git_ref.is_none()
+        && let Some(r) = fragment_ref
+    {
+        parsed.git_ref = Some(r);
+    }
+    if parsed.skill_filter.is_none()
+        && let Some(f) = fragment_filter
+    {
+        parsed.skill_filter = Some(f);
+    }
+
+    parsed
+}
+
+/// Result of stripping a `#ref[@filter]` fragment from a source string.
+struct FragmentRef {
+    /// Input with the `#…` fragment removed (or the original input if the
+    /// fragment was not a valid git-source ref).
+    base: String,
+    /// The decoded `ref` portion of the fragment, if any.
+    ref_: Option<String>,
+    /// The decoded `@filter` portion of the fragment, if any.
+    filter: Option<String>,
+}
+
+/// Split `input` into its base portion and optional `ref` + `skillFilter`.
+///
+/// Fragments are only honored for git-like sources (GitHub / GitLab repo or
+/// tree URLs and shorthands); for other inputs the `#` is preserved verbatim
+/// so well-known URLs with fragment identifiers are untouched. Matches TS
+/// `parseFragmentRef`.
+fn parse_fragment_ref(input: &str) -> FragmentRef {
+    let Some(hash_idx) = input.find('#') else {
+        return FragmentRef {
+            base: input.to_owned(),
+            ref_: None,
+            filter: None,
+        };
+    };
+
+    let base = &input[..hash_idx];
+    let fragment = &input[hash_idx + 1..];
+
+    if fragment.is_empty() || !looks_like_git_source(base) {
+        return FragmentRef {
+            base: input.to_owned(),
+            ref_: None,
+            filter: None,
+        };
+    }
+
+    let (ref_part, filter_part) = fragment.split_once('@').map_or_else(
+        || (fragment, None),
+        |(r, f)| (r, Some(decode_fragment_value(f))),
+    );
+
+    let ref_value = if ref_part.is_empty() {
+        None
+    } else {
+        Some(decode_fragment_value(ref_part))
+    };
+
+    FragmentRef {
+        base: base.to_owned(),
+        ref_: ref_value,
+        filter: filter_part.filter(|s| !s.is_empty()),
+    }
+}
+
+/// URL-decode a fragment value, falling back to the raw string on error.
+fn decode_fragment_value(value: &str) -> String {
+    urlencoding::decode(value).map_or_else(|_| value.to_owned(), std::borrow::Cow::into_owned)
+}
+
+/// Whether `input` is a git-like source for which `#ref` should be parsed.
+fn looks_like_git_source(input: &str) -> bool {
+    if input.starts_with("github:") || input.starts_with("gitlab:") {
+        return true;
+    }
+
+    if is_local_path(input) {
+        return false;
+    }
+
+    if input.starts_with("http://") || input.starts_with("https://") {
+        if let Ok(url) = url::Url::parse(input) {
+            let host = url.host_str().unwrap_or("");
+            let path = url.path();
+            // Only GitHub/GitLab repo-like paths should accept fragment refs;
+            // opaque HTTP URLs (well-known) keep their original fragments.
+            if host == "github.com" {
+                return github_path_re().is_match(path);
+            }
+            if host == "gitlab.com" {
+                return gitlab_path_re().is_match(path);
+            }
+        }
+        return false;
+    }
+
+    // Bare `owner/repo[/subpath]` shorthand.
+    if !input.contains(':') && !input.starts_with('.') && !input.starts_with('/') {
+        return shorthand_re().is_match(input) || at_skill_re().is_match(input);
+    }
+
+    false
+}
+
+/// Internal parser that operates on a fragment-free source string.
 #[allow(
     clippy::too_many_lines,
     reason = "sequential match arms for different source formats"
 )]
-pub fn parse_source(input: &str) -> ParsedSource {
+fn parse_source_inner(input: &str) -> ParsedSource {
     let mut input = input.to_owned();
 
     // Resolve aliases
@@ -44,12 +169,12 @@ pub fn parse_source(input: &str) -> ParsedSource {
 
     // github: prefix
     if let Some(rest) = input.strip_prefix("github:") {
-        return parse_source(rest);
+        return parse_source_inner(rest);
     }
 
     // gitlab: prefix
     if let Some(rest) = input.strip_prefix("gitlab:") {
-        return parse_source(&format!("https://gitlab.com/{rest}"));
+        return parse_source_inner(&format!("https://gitlab.com/{rest}"));
     }
 
     // Local path
@@ -355,6 +480,12 @@ static_regex! {
 
     /// `owner/repo[/subpath]` shorthand.
     shorthand_re => r"^([^/]+)/([^/]+)(?:/(.+))?$";
+
+    /// Path component of a GitHub repo or tree URL (used by fragment logic).
+    github_path_re => r"^/[^/]+/[^/]+(?:\.git)?(?:/tree/[^/]+(?:/.*)?)?/?$";
+
+    /// Path component of a GitLab repo or tree URL (used by fragment logic).
+    gitlab_path_re => r"^/.+?/[^/]+(?:\.git)?(?:/-/tree/[^/]+(?:/.*)?)?/?$";
 }
 
 #[cfg(test)]
@@ -396,5 +527,61 @@ mod tests {
     #[test]
     fn test_sanitize_subpath_unsafe() {
         assert!(sanitize_subpath("../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_fragment_ref_shorthand() {
+        let p = parse_source("owner/repo#v2");
+        assert_eq!(p.source_type, SourceType::Github);
+        assert_eq!(p.url, "https://github.com/owner/repo.git");
+        assert_eq!(p.git_ref.as_deref(), Some("v2"));
+        assert!(p.skill_filter.is_none());
+    }
+
+    #[test]
+    fn test_fragment_ref_with_filter() {
+        let p = parse_source("owner/repo#main@find-skills");
+        assert_eq!(p.source_type, SourceType::Github);
+        assert_eq!(p.git_ref.as_deref(), Some("main"));
+        assert_eq!(p.skill_filter.as_deref(), Some("find-skills"));
+    }
+
+    #[test]
+    fn test_fragment_ref_github_url() {
+        let p = parse_source("https://github.com/owner/repo#release-1.0");
+        assert_eq!(p.source_type, SourceType::Github);
+        assert_eq!(p.git_ref.as_deref(), Some("release-1.0"));
+    }
+
+    #[test]
+    fn test_fragment_ref_tree_url_wins() {
+        // Explicit tree/<ref> in path should win over fragment ref.
+        let p = parse_source("https://github.com/owner/repo/tree/branch-a#branch-b");
+        assert_eq!(p.git_ref.as_deref(), Some("branch-a"));
+    }
+
+    #[test]
+    fn test_fragment_ref_well_known_untouched() {
+        // Fragment on a non-git URL must be preserved verbatim.
+        let p = parse_source("https://mintlify.com/docs#section");
+        assert_eq!(p.source_type, SourceType::WellKnown);
+        assert!(p.git_ref.is_none());
+        assert!(p.url.contains("#section"));
+    }
+
+    #[test]
+    fn test_fragment_ref_url_encoded() {
+        let p = parse_source("owner/repo#feature%2Fauth");
+        assert_eq!(p.git_ref.as_deref(), Some("feature/auth"));
+    }
+
+    #[test]
+    fn test_fragment_ref_shorthand_filter_wins_over_fragment() {
+        // `@skill` shorthand wins over `#ref@filter` filter part.
+        let p = parse_source("owner/repo@shorthand-filter#v1@fragment-filter");
+        // The `@` comes before `#`, so `owner/repo@shorthand-filter` gets
+        // matched as the at-skill form once the fragment is stripped; the
+        // fragment's ref still applies.
+        assert_eq!(p.skill_filter.as_deref(), Some("shorthand-filter"));
     }
 }

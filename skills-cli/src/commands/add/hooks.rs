@@ -200,6 +200,7 @@ pub(super) async fn prompt_for_find_skills(
             all: false,
             full_depth: false,
             dry_run: false,
+            dangerously_accept_openclaw_risks: false,
         };
         drop(Box::pin(super::run(add_args)).await);
     } else {
@@ -224,6 +225,7 @@ pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills
             &owner_repo,
             skill_path.as_deref().unwrap_or(""),
             skill::github::get_token().as_deref(),
+            parsed.git_ref.as_deref(),
         )
         .await
         .unwrap_or(None)
@@ -235,6 +237,7 @@ pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills
                 source: &owner_repo,
                 source_type: &parsed.source_type.to_string(),
                 source_url: &parsed.url,
+                git_ref: parsed.git_ref.as_deref(),
                 skill_path: skill_path.as_deref(),
                 skill_folder_hash: &hash,
                 plugin_name: s.plugin_name.as_deref(),
@@ -262,6 +265,7 @@ pub(super) async fn update_local_lock_file(
                 &s.name,
                 skill::local_lock::LocalSkillLockEntry {
                     source: source.clone(),
+                    git_ref: parsed.git_ref.clone(),
                     source_type: parsed.source_type.to_string(),
                     computed_hash: hash,
                 },

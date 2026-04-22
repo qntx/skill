@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Result, SkillError};
+use crate::sanitize::sanitize_metadata;
 use crate::types::{DiscoverOptions, Skill};
 
 /// Directories to skip during recursive skill search.
@@ -51,11 +52,11 @@ pub async fn parse_skill_md(skill_md_path: &Path, include_internal: bool) -> Res
     let name = data
         .get("name")
         .and_then(serde_yml::Value::as_str)
-        .map(String::from);
+        .map(sanitize_metadata);
     let description = data
         .get("description")
         .and_then(serde_yml::Value::as_str)
-        .map(String::from);
+        .map(sanitize_metadata);
 
     let (Some(name), Some(description)) = (name, description) else {
         return Ok(None);
@@ -283,7 +284,6 @@ fn build_priority_dirs(search_path: &Path) -> Vec<PathBuf> {
         sp.join("skills/.curated"),
         sp.join("skills/.experimental"),
         sp.join("skills/.system"),
-        sp.join(".agent/skills"),
         sp.join(".agents/skills"),
         sp.join(".claude/skills"),
         sp.join(".cline/skills"),

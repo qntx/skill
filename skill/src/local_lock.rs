@@ -23,6 +23,12 @@ const CURRENT_VERSION: u32 = 1;
 pub struct LocalSkillLockEntry {
     /// Source identifier (e.g. `"owner/repo"`, npm package name).
     pub source: String,
+    /// Branch or tag ref used at install time (for ref-aware updates).
+    ///
+    /// Serialized as `ref` to match the TS reference. `None` means the
+    /// installer used the default branch / package version.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
     /// Source type (e.g. `"github"`, `"node_modules"`, `"local"`).
     pub source_type: String,
     /// SHA-256 hash of the skill folder contents.
@@ -204,6 +210,7 @@ mod tests {
             "my-skill".to_owned(),
             LocalSkillLockEntry {
                 source: "owner/repo".to_owned(),
+                git_ref: None,
                 source_type: "github".to_owned(),
                 computed_hash: "abc123".to_owned(),
             },
@@ -227,6 +234,7 @@ mod tests {
             "z-skill".to_owned(),
             LocalSkillLockEntry {
                 source: "z".to_owned(),
+                git_ref: None,
                 source_type: "github".to_owned(),
                 computed_hash: String::new(),
             },
@@ -235,6 +243,7 @@ mod tests {
             "a-skill".to_owned(),
             LocalSkillLockEntry {
                 source: "a".to_owned(),
+                git_ref: None,
                 source_type: "github".to_owned(),
                 computed_hash: String::new(),
             },
@@ -262,6 +271,7 @@ mod tests {
             "test".to_owned(),
             LocalSkillLockEntry {
                 source: "src".to_owned(),
+                git_ref: None,
                 source_type: "local".to_owned(),
                 computed_hash: "hash".to_owned(),
             },
@@ -329,6 +339,7 @@ mod tests {
             "foo",
             LocalSkillLockEntry {
                 source: "s".to_owned(),
+                git_ref: None,
                 source_type: "t".to_owned(),
                 computed_hash: "h".to_owned(),
             },

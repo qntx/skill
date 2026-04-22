@@ -22,3 +22,6 @@ target
 
 /contracts
 /3rdparty
+
+# Internal audit / planning artifacts (not for git)
+.windsurf/

@@ -35,6 +35,8 @@
 use pathdiff as _;
 
 pub mod agents;
+#[cfg(feature = "network")]
+pub mod blob;
 pub mod error;
 pub mod git;
 pub mod github;
@@ -45,6 +47,7 @@ pub mod manager;
 pub(crate) mod path_util;
 pub(crate) mod plugin_manifest;
 pub mod providers;
+pub mod sanitize;
 pub mod skills;
 pub mod source;
 pub mod telemetry;

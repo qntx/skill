@@ -63,6 +63,10 @@ struct GitTreeEntry {
 
 /// Fetch the tree SHA for a skill folder via the GitHub Trees API.
 ///
+/// Tries `git_ref` first (if provided), then falls back to `HEAD` → `main` →
+/// `master`. This matches the TS reference which accepts an optional `ref`
+/// for ref-aware updates.
+///
 /// # Errors
 ///
 /// Returns an error on network failure.
@@ -71,6 +75,7 @@ pub async fn fetch_skill_folder_hash(
     owner_repo: &str,
     skill_path: &str,
     token: Option<&str>,
+    git_ref: Option<&str>,
 ) -> Result<Option<String>> {
     let folder_path = skill_path
         .replace('\\', "/")
@@ -89,7 +94,20 @@ pub async fn fetch_skill_folder_hash(
             )
         })?;
 
-    for branch in &["main", "master"] {
+    // Build candidate ref list without duplicates, preserving order.
+    let mut candidates: Vec<&str> = Vec::with_capacity(4);
+    if let Some(r) = git_ref
+        && !r.trim().is_empty()
+    {
+        candidates.push(r);
+    }
+    for default in ["HEAD", "main", "master"] {
+        if !candidates.contains(&default) {
+            candidates.push(default);
+        }
+    }
+
+    for branch in candidates {
         let url =
             format!("https://api.github.com/repos/{owner_repo}/git/trees/{branch}?recursive=1");
 

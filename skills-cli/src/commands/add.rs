@@ -62,6 +62,14 @@ pub(crate) struct AddArgs {
     /// Preview what would be installed without making changes.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Opt in to installing from the `openclaw/*` organization.
+    ///
+    /// `OpenClaw` is a user-submitted skill registry without vetting; installs
+    /// are blocked by default. Passing this flag acknowledges that the caller
+    /// has reviewed the source themselves.
+    #[arg(long = "dangerously-accept-openclaw-risks")]
+    pub dangerously_accept_openclaw_risks: bool,
 }
 
 /// Options for `run_add` when called programmatically.
@@ -93,8 +101,16 @@ pub(crate) async fn run_add(opts: RunAddOptions) -> Result<()> {
         all: false,
         full_depth: false,
         dry_run: opts.dry_run,
+        dangerously_accept_openclaw_risks: false,
     };
     run(args).await
+}
+
+/// Whether the parsed source resolves to the `openclaw/*` org.
+fn is_openclaw_source(parsed: &skill::types::ParsedSource) -> bool {
+    skill::source::get_owner_repo(parsed)
+        .and_then(|s| s.split('/').next().map(str::to_ascii_lowercase))
+        .is_some_and(|owner| owner == "openclaw")
 }
 
 /// Run the add command.
@@ -168,6 +184,22 @@ async fn run_single_source(
         let _ = write!(source_suffix, " {DIM}@{RESET}\x1b[36m{f}\x1b[0m");
     }
     spinner.stop(format!("Source: {source_display}{source_suffix}"));
+
+    // Block openclaw/* sources unless the caller explicitly opts in. Mirrors
+    // the TS `add.ts` guard at `3rdparty/skills/src/add.ts:946`.
+    if is_openclaw_source(&parsed) && !args.dangerously_accept_openclaw_risks {
+        let _ = cliclack::log::warning("OpenClaw skills are unverified community submissions.");
+        let _ = cliclack::log::remark(
+            "This source contains user-submitted skills that have not been reviewed for safety or quality.",
+        );
+        let _ =
+            cliclack::log::remark("Skills run with full agent permissions and could be malicious.");
+        let _ = cliclack::log::remark(format!(
+            "If you understand the risks, re-run with:\n  skills add {source} --dangerously-accept-openclaw-risks"
+        ));
+        let _ = cliclack::outro_cancel("\x1b[31mInstallation blocked\x1b[0m");
+        return Ok(None);
+    }
 
     if let Some(filter) = &parsed.skill_filter {
         args.skill.get_or_insert_with(Vec::new).push(filter.clone());
@@ -372,6 +404,7 @@ async fn handle_wellknown_source(
             source: &wk.remote.source_identifier,
             source_type: "well-known",
             source_url: &wk.remote.source_url,
+            git_ref: None,
             skill_path: None,
             skill_folder_hash: "",
             plugin_name: None,

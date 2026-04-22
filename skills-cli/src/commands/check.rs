@@ -36,13 +36,20 @@ pub(crate) async fn run() -> Result<()> {
                 name: name.clone(),
                 reason: get_skip_reason(entry),
                 source_url: entry.source_url.clone(),
+                source_type: entry.source_type.clone(),
+                git_ref: entry.git_ref.clone(),
             });
             continue;
         }
 
         let skill_path = entry.skill_path.as_deref().unwrap_or_default();
-        match skill::github::fetch_skill_folder_hash(&entry.source, skill_path, token.as_deref())
-            .await
+        match skill::github::fetch_skill_folder_hash(
+            &entry.source,
+            skill_path,
+            token.as_deref(),
+            entry.git_ref.as_deref(),
+        )
+        .await
         {
             Ok(Some(latest)) if latest != entry.skill_folder_hash => {
                 updates.push((name.clone(), entry.source.clone()));

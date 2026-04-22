@@ -203,7 +203,7 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
     reg.register(agent(
         "antigravity",
         "Antigravity",
-        ".agent/skills",
+        ".agents/skills",
         Some(h.join(".gemini/antigravity/skills")),
         vec![h.join(".gemini/antigravity")],
     ));
@@ -213,6 +213,13 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
         ".augment/skills",
         Some(h.join(".augment/skills")),
         vec![h.join(".augment")],
+    ));
+    reg.register(agent(
+        "bob",
+        "IBM Bob",
+        ".bob/skills",
+        Some(h.join(".bob/skills")),
+        vec![h.join(".bob")],
     ));
     reg.register(agent(
         "claude-code",
@@ -296,11 +303,25 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
         vec![h.join(".cursor")],
     ));
     reg.register(agent(
+        "deepagents",
+        "Deep Agents",
+        ".agents/skills",
+        Some(h.join(".deepagents/agent/skills")),
+        vec![h.join(".deepagents")],
+    ));
+    reg.register(agent(
         "droid",
         "Droid",
         ".factory/skills",
         Some(h.join(".factory/skills")),
         vec![h.join(".factory")],
+    ));
+    reg.register(agent(
+        "firebender",
+        "Firebender",
+        ".agents/skills",
+        Some(h.join(".firebender/skills")),
+        vec![h.join(".firebender")],
     ));
     reg.register(agent(
         "gemini-cli",
@@ -452,6 +473,13 @@ fn register_builtin_agents(reg: &mut AgentRegistry) {
         ".trae/skills",
         Some(h.join(".trae-cn/skills")),
         vec![h.join(".trae-cn")],
+    ));
+    reg.register(agent(
+        "warp",
+        "Warp",
+        ".agents/skills",
+        Some(h.join(".agents/skills")),
+        vec![h.join(".warp")],
     ));
     reg.register(agent(
         "windsurf",

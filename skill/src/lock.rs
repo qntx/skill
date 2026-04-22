@@ -1,7 +1,8 @@
 //! Global skill lock file management.
 //!
-//! The global lock file lives at `~/.agents/.skill-lock.json` and tracks
-//! installed skills for update checking and telemetry.
+//! The global lock file lives at `$XDG_STATE_HOME/skills/.skill-lock.json` if
+//! `XDG_STATE_HOME` is set, otherwise at `~/.agents/.skill-lock.json`. It
+//! tracks installed skills for update checking and telemetry.
 
 use std::path::PathBuf;
 
@@ -25,6 +26,12 @@ pub struct SkillLockEntry {
     pub source_type: String,
     /// Original URL used for installation.
     pub source_url: String,
+    /// Branch or tag ref used at install time (for ref-aware updates).
+    ///
+    /// Serialized as `ref` to match the TS reference. `None` means the
+    /// installer used the repository default branch.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
     /// Subpath within the source repo, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_path: Option<String>,
@@ -76,9 +83,18 @@ impl SkillLockFile {
     }
 }
 
-/// Get the path to the global lock file (`~/.agents/.skill-lock.json`).
+/// Get the path to the global lock file.
+///
+/// Uses `$XDG_STATE_HOME/skills/.skill-lock.json` if `XDG_STATE_HOME` is set
+/// and non-empty (matching the TS reference), otherwise falls back to
+/// `~/.agents/.skill-lock.json`.
 #[must_use]
 pub fn lock_file_path() -> PathBuf {
+    if let Ok(xdg) = std::env::var("XDG_STATE_HOME")
+        && !xdg.trim().is_empty()
+    {
+        return PathBuf::from(xdg).join("skills").join(LOCK_FILE);
+    }
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("~"));
     home.join(AGENTS_DIR).join(LOCK_FILE)
 }
@@ -151,6 +167,8 @@ pub struct AddLockInput<'a> {
     pub source_type: &'a str,
     /// Original URL used for installation.
     pub source_url: &'a str,
+    /// Branch or tag ref used at install time, if any.
+    pub git_ref: Option<&'a str>,
     /// Subpath within the source repo.
     pub skill_path: Option<&'a str>,
     /// GitHub tree SHA for the skill folder.
@@ -179,6 +197,7 @@ pub async fn add_skill_to_lock(input: &AddLockInput<'_>) -> Result<()> {
             source: input.source.to_owned(),
             source_type: input.source_type.to_owned(),
             source_url: input.source_url.to_owned(),
+            git_ref: input.git_ref.map(String::from),
             skill_path: input.skill_path.map(String::from),
             skill_folder_hash: input.skill_folder_hash.to_owned(),
             installed_at,

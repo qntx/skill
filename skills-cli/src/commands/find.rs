@@ -306,6 +306,7 @@ pub(crate) async fn run(args: FindArgs) -> Result<()> {
         full_depth: false,
         copy: false,
         dry_run: false,
+        dangerously_accept_openclaw_risks: false,
     };
 
     super::add::run(add_args).await?;

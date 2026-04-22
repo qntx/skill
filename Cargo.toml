@@ -8,7 +8,7 @@ version = "0.7.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/skill"
-description = "Blazing-fast Vercel Skills CLI, reborn in Rust. 100% command parity, zero compromises."
+description = "Blazing-fast Vercel Skills CLI, reborn in Rust — full command parity, native performance."
 
 [workspace.dependencies]
 skill = { version = "0.7", path = "skill", features = ["network", "telemetry"] }

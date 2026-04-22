@@ -55,8 +55,9 @@ enum Commands {
     /// Check for available skill updates.
     Check,
 
-    /// Update all skills to latest versions.
-    Update,
+    /// Update installed skills to the latest versions.
+    #[command(visible_alias = "upgrade-skills")]
+    Update(commands::update::UpdateArgs),
 
     /// Initialize a skill (creates SKILL.md).
     Init(commands::init::InitArgs),
@@ -107,7 +108,7 @@ async fn main() -> miette::Result<()> {
                 commands::find::run(args).await?;
             }
             Commands::Check => commands::check::run().await?,
-            Commands::Update => commands::update::run().await?,
+            Commands::Update(args) => commands::update::run(args).await?,
             Commands::Init(args) => {
                 ui::show_logo();
                 println!();

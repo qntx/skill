@@ -4,10 +4,14 @@
 
 use super::traits::{BoxFuture, HostProvider};
 use crate::error::Result;
+use crate::sanitize::sanitize_metadata;
 use crate::types::{RemoteSkill, WellKnownIndex, WellKnownSkill, WellKnownSkillEntry};
 
-/// Standard well-known skills directory path.
-const WELL_KNOWN_PATH: &str = ".well-known/skills";
+/// Well-known skills directory paths, tried in order.
+///
+/// The `agent-skills` path matches the current TS reference; `skills` is kept
+/// as a legacy fallback for older deployments.
+const WELL_KNOWN_PATHS: &[&str] = &[".well-known/agent-skills", ".well-known/skills"];
 /// Index file name within the well-known path.
 const INDEX_FILE: &str = "index.json";
 /// Hosts excluded from well-known skill resolution.
@@ -69,27 +73,37 @@ impl WellKnownProvider {
     ///
     /// Returns an error on network failure.
     #[cfg(feature = "network")]
-    pub async fn fetch_index(&self, base_url: &str) -> Result<Option<(WellKnownIndex, String)>> {
+    pub async fn fetch_index(
+        &self,
+        base_url: &str,
+    ) -> Result<Option<(WellKnownIndex, String, &'static str)>> {
         let Ok(parsed) = url::Url::parse(base_url) else {
             return Ok(None);
         };
         let base_path = parsed.path().trim_end_matches('/');
         let host = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
 
-        let urls_to_try = vec![
-            (
-                format!("{host}{base_path}/{WELL_KNOWN_PATH}/{INDEX_FILE}"),
+        // For each well-known path, try path-relative first, then the host
+        // root as a fallback (matches TS behavior).
+        let mut urls_to_try: Vec<(String, String, &'static str)> = Vec::new();
+        for &wk_path in WELL_KNOWN_PATHS {
+            urls_to_try.push((
+                format!("{host}{base_path}/{wk_path}/{INDEX_FILE}"),
                 format!("{host}{base_path}"),
-            ),
-            (
-                format!("{host}/{WELL_KNOWN_PATH}/{INDEX_FILE}"),
-                host.clone(),
-            ),
-        ];
+                wk_path,
+            ));
+            if !base_path.is_empty() {
+                urls_to_try.push((
+                    format!("{host}/{wk_path}/{INDEX_FILE}"),
+                    host.clone(),
+                    wk_path,
+                ));
+            }
+        }
 
         let client = reqwest::Client::new();
 
-        for (index_url, resolved_base) in urls_to_try {
+        for (index_url, resolved_base, wk_path) in urls_to_try {
             let resp = match client.get(&index_url).send().await {
                 Ok(r) if r.status().is_success() => r,
                 _ => continue,
@@ -106,7 +120,7 @@ impl WellKnownProvider {
 
             let all_valid = index.skills.iter().all(is_valid_skill_entry);
             if all_valid {
-                return Ok(Some((index, resolved_base)));
+                return Ok(Some((index, resolved_base, wk_path)));
             }
         }
 
@@ -120,13 +134,16 @@ impl WellKnownProvider {
     /// Returns an error on network failure.
     #[cfg(feature = "network")]
     pub async fn fetch_all_skills(&self, url: &str) -> Result<Vec<WellKnownSkill>> {
-        let Some((index, resolved_base)) = self.fetch_index(url).await? else {
+        let Some((index, resolved_base, wk_path)) = self.fetch_index(url).await? else {
             return Ok(Vec::new());
         };
 
         let mut skills = Vec::new();
         for entry in &index.skills {
-            if let Some(skill) = self.fetch_skill_by_entry(&resolved_base, entry).await? {
+            if let Some(skill) = self
+                .fetch_skill_by_entry(&resolved_base, entry, wk_path)
+                .await?
+            {
                 skills.push(skill);
             }
         }
@@ -140,9 +157,10 @@ impl WellKnownProvider {
         &self,
         base_url: &str,
         entry: &WellKnownSkillEntry,
+        wk_path: &str,
     ) -> Result<Option<WellKnownSkill>> {
         let skill_base = format!(
-            "{}/{WELL_KNOWN_PATH}/{}",
+            "{}/{wk_path}/{}",
             base_url.trim_end_matches('/'),
             entry.name
         );
@@ -164,11 +182,11 @@ impl WellKnownProvider {
                 let n = data
                     .get("name")
                     .and_then(serde_yml::Value::as_str)
-                    .map(String::from);
+                    .map(sanitize_metadata);
                 let d = data
                     .get("description")
                     .and_then(serde_yml::Value::as_str)
-                    .map(String::from);
+                    .map(sanitize_metadata);
                 match (n, d) {
                     (Some(n), Some(d)) => (n, d),
                     _ => return Ok(None),
@@ -222,12 +240,14 @@ impl WellKnownProvider {
     /// Fetch a single well-known skill.
     #[cfg(feature = "network")]
     async fn fetch_single_skill(&self, url: &str) -> Result<Option<WellKnownSkill>> {
-        let Some((index, resolved_base)) = self.fetch_index(url).await? else {
+        let Some((index, resolved_base, wk_path)) = self.fetch_index(url).await? else {
             return Ok(None);
         };
 
         if let [single] = index.skills.as_slice() {
-            return self.fetch_skill_by_entry(&resolved_base, single).await;
+            return self
+                .fetch_skill_by_entry(&resolved_base, single, wk_path)
+                .await;
         }
 
         Ok(None)

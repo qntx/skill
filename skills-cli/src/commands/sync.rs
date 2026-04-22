@@ -302,6 +302,7 @@ pub(crate) async fn run(args: SyncArgs) -> Result<()> {
                 &skill_item.name,
                 LocalSkillLockEntry {
                     source,
+                    git_ref: None,
                     source_type: "node_modules".to_owned(),
                     computed_hash: hash,
                 },

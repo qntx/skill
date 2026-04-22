@@ -8,7 +8,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/skill.svg)](https://crates.io/crates/skill)
 [![docs.rs](https://img.shields.io/docsrs/skill)](https://docs.rs/skill)
-[![CI](https://img.shields.io/github/actions/workflow/status/qntx/skill/rust.yml?label=CI)](https://github.com/qntx/skill/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/qntx/skill/ci.yml?label=CI)](https://github.com/qntx/skill/actions)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 A high-performance Rust implementation of the [Vercel `skills` CLI](https://github.com/vercel-labs/skills).
@@ -21,50 +21,6 @@ Supports **Cursor**, **Claude Code**, **Windsurf**, **Codex**, and [35 more](#su
 </div>
 
 ---
-
-## Why Rust?
-
-| Feature | TypeScript CLI | Rust CLI |
-| ------- | -------------- | -------- |
-| **Startup time** | ~300ms (Node.js cold start) | **<10ms** |
-| **Binary size** | ~150MB (node_modules) | **~8MB** single static binary |
-| **Shell completions** | ❌ Not possible | ✅ `skills completions <shell>` |
-| **Self-update** | ❌ Requires npm | ✅ `skills upgrade` |
-| **Health diagnostics** | ❌ None | ✅ `skills doctor` |
-| **Dry-run mode** | ❌ None | ✅ `skills add --dry-run` |
-| **Parallel I/O** | Sequential | ✅ Concurrent overwrite checks |
-| **Runtime deps** | Node.js 18+, npm/npx | **None** |
-| **Memory usage** | ~80MB baseline | **~5MB** |
-
-### Rust-Exclusive Commands
-
-```bash
-# Generate shell completions (bash, zsh, fish, powershell)
-skills completions bash >> ~/.bashrc
-skills completions zsh >> ~/.zshrc
-skills completions fish > ~/.config/fish/completions/skills.fish
-
-# Self-update to latest release (like bun upgrade)
-skills upgrade
-
-# Health check: broken symlinks, lock consistency, SKILL.md validity
-skills doctor
-
-# Preview installation without making changes (CI-friendly)
-skills add qntx/skills --dry-run
-```
-
----
-
-## Quick Start
-
-```bash
-# Install a skill
-skills add qntx/skills
-
-# Search and install interactively
-skills find
-```
 
 ## Install
 
@@ -86,12 +42,32 @@ irm https://sh.qntx.fun/skill/ps | iex
 cargo install skills-cli
 ```
 
-**From Source**:
+## Quick Start
 
 ```bash
-git clone https://github.com/qntx/skill.git
-cd skill
-cargo install --path skills-cli
+# Install a skill
+skills add qntx/skills
+
+# Search and install interactively
+skills find
+```
+
+### Rust-Exclusive Commands
+
+```bash
+# Generate shell completions (bash, zsh, fish, powershell)
+skills completions bash >> ~/.bashrc
+skills completions zsh >> ~/.zshrc
+skills completions fish > ~/.config/fish/completions/skills.fish
+
+# Self-update to latest release (like bun upgrade)
+skills upgrade
+
+# Health check: broken symlinks, lock consistency, SKILL.md validity
+skills doctor
+
+# Preview installation without making changes (CI-friendly)
+skills add qntx/skills --dry-run
 ```
 
 ---

@@ -7,7 +7,27 @@ use crate::error::{Result, SkillError};
 /// Files to exclude when copying skill directories.
 const EXCLUDE_FILES: &[&str] = &["metadata.json"];
 /// Directories to exclude when copying skill directories.
-const EXCLUDE_DIRS: &[&str] = &[".git"];
+///
+/// Matches the TS reference: version-control metadata (`.git`), and Python
+/// build caches (`__pycache__`, `__pypackages__`) that frequently appear in
+/// skill repositories but are not meant to be shipped.
+const EXCLUDE_DIRS: &[&str] = &[".git", "__pycache__", "__pypackages__"];
+
+/// Whether `name` is an entry to skip during installation copy.
+///
+/// Hidden files (dotfiles) are excluded because they are almost always
+/// editor / tool artifacts (`.DS_Store`, `.env`, `.github`, etc.) and never
+/// part of a skill's public surface. Matches TS `startsWith('.')`.
+fn is_excluded_entry(name: &str, is_dir: bool) -> bool {
+    if name.starts_with('.') {
+        return true;
+    }
+    if is_dir {
+        EXCLUDE_DIRS.contains(&name)
+    } else {
+        EXCLUDE_FILES.contains(&name)
+    }
+}
 
 /// Remove and recreate a directory.
 pub(super) async fn clean_and_create(path: &Path) -> Result<()> {
@@ -41,7 +61,7 @@ pub(super) async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
             .map_err(|e| SkillError::io(src, e))?;
 
         if ft.is_dir() {
-            if EXCLUDE_DIRS.contains(&name_str.as_ref()) || name_str.starts_with('_') {
+            if is_excluded_entry(&name_str, true) {
                 continue;
             }
             let sub_dest = dest.join(&name);
@@ -50,12 +70,16 @@ pub(super) async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
             // Dereference symlinks: copy the target file content, matching
             // the TS `cp(src, dest, { dereference: true })` behavior.
             // Skip broken symlinks that can't be resolved.
-            if EXCLUDE_FILES.contains(&name_str.as_ref()) || name_str.starts_with('_') {
+            let src_path = entry.path();
+            // Resolve the symlink target to decide dir vs file exclusion.
+            let resolved_is_dir = tokio::fs::metadata(&src_path)
+                .await
+                .map(|m| m.is_dir())
+                .unwrap_or(false);
+            if is_excluded_entry(&name_str, resolved_is_dir) {
                 continue;
             }
-            let src_path = entry.path();
             let dest_file = dest.join(&name);
-            // Follow the symlink chain via metadata (not symlink_metadata)
             match tokio::fs::metadata(&src_path).await {
                 Ok(meta) if meta.is_dir() => {
                     Box::pin(copy_directory(&src_path, &dest_file)).await?;
@@ -68,7 +92,7 @@ pub(super) async fn copy_directory(src: &Path, dest: &Path) -> Result<()> {
                 }
             }
         } else {
-            if EXCLUDE_FILES.contains(&name_str.as_ref()) || name_str.starts_with('_') {
+            if is_excluded_entry(&name_str, false) {
                 continue;
             }
             let dest_file = dest.join(&name);
