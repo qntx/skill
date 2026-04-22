@@ -300,16 +300,18 @@ async fn check_skill_md_validity(manager: &SkillManager, cwd: &Path, findings: &
 
     let mut invalid_count = 0u32;
     for skill_item in &installed {
-        let skill_md = skill_item.canonical_path.join("SKILL.md");
+        // Prefer canonical path; fall back to the recorded path (copy-mode).
+        let check_dir = skill_item
+            .canonical_path
+            .as_deref()
+            .unwrap_or(&skill_item.path);
+        let skill_md = check_dir.join("SKILL.md");
         if !skill_md.exists() {
             invalid_count += 1;
             findings.push(Finding {
                 severity: Severity::Error,
                 category: "SKILL.md Validity",
-                message: format!(
-                    "Missing SKILL.md in {}",
-                    skill_item.canonical_path.display()
-                ),
+                message: format!("Missing SKILL.md in {}", check_dir.display()),
                 hint: Some(
                     "Skill directory exists but has no SKILL.md — reinstall the skill".to_owned(),
                 ),

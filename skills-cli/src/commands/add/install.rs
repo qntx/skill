@@ -8,16 +8,124 @@ use skill::types::{
     AgentId, InstallMode, InstallOptions, InstallResult, Skill, SourceType, WellKnownSkill,
 };
 
+/// Per-agent classification of how a skill ended up on disk.
+#[derive(Debug, Clone)]
+pub(super) enum AgentInstallStatus {
+    /// Agent uses the universal `.agents/skills` directory, so canonical
+    /// placement *is* the agent placement.
+    Universal,
+    /// Agent-specific directory is a symlink into the canonical tree.
+    Symlinked,
+    /// Agent-specific directory was requested as a copy (`--copy`), or
+    /// the agent receives a physical copy for other reasons.  Carries the
+    /// absolute path that was written.
+    Copied { path: PathBuf },
+    /// A symlink was attempted but failed (e.g. missing admin rights on
+    /// Windows) and the installer fell back to copying.  Carries the path
+    /// of the fallback copy.
+    SymlinkFellBackToCopy { path: PathBuf },
+    /// Installation for this agent failed outright.
+    Failed,
+}
+
+/// One (display-name, status) pair — `display_name` is the user-facing agent
+/// label, `status` is the classification of the per-agent outcome.
+#[derive(Debug, Clone)]
+pub(super) struct AgentOutcome {
+    pub display_name: String,
+    pub status: AgentInstallStatus,
+}
+
+/// Aggregated outcome for a single skill across every target agent.
+#[derive(Debug, Clone)]
 pub(super) struct SkillInstallOutcome {
     pub skill_name: String,
     pub plugin_name: Option<String>,
+    /// Canonical `.agents/skills/<name>` path, populated the first time any
+    /// agent reports one.  `None` when every agent used pure copy mode.
     pub canonical_path: Option<PathBuf>,
-    pub universal_agents: Vec<String>,
-    pub symlinked_agents: Vec<String>,
-    pub copied_agents: Vec<String>,
-    pub symlink_failed_agents: Vec<String>,
-    pub failed_agents: Vec<String>,
-    pub copy_paths: Vec<PathBuf>,
+    /// One entry per target agent, in the order the installer visited them.
+    pub agents: Vec<AgentOutcome>,
+}
+
+impl SkillInstallOutcome {
+    fn new(skill: &Skill) -> Self {
+        Self {
+            skill_name: skill.name.clone(),
+            plugin_name: skill.plugin_name.clone(),
+            canonical_path: None,
+            agents: Vec::new(),
+        }
+    }
+
+    fn for_wellknown(wk: &WellKnownSkill) -> Self {
+        Self {
+            skill_name: wk.remote.name.clone(),
+            plugin_name: None,
+            canonical_path: None,
+            agents: Vec::new(),
+        }
+    }
+
+    pub(super) fn has_success(&self) -> bool {
+        self.agents
+            .iter()
+            .any(|a| !matches!(a.status, AgentInstallStatus::Failed))
+    }
+
+    pub(super) fn failed_agents(&self) -> impl Iterator<Item = &str> {
+        self.agents.iter().filter_map(|a| match a.status {
+            AgentInstallStatus::Failed => Some(a.display_name.as_str()),
+            _ => None,
+        })
+    }
+
+    pub(super) fn symlink_fallback_agents(&self) -> impl Iterator<Item = &str> {
+        self.agents.iter().filter_map(|a| match a.status {
+            AgentInstallStatus::SymlinkFellBackToCopy { .. } => Some(a.display_name.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Whether every successful agent went through pure copy mode
+    /// (i.e. the user passed `--copy`, no canonical symlink exists).
+    pub(super) fn is_pure_copy_mode(&self) -> bool {
+        self.agents.iter().all(|a| {
+            matches!(
+                a.status,
+                AgentInstallStatus::Copied { .. } | AgentInstallStatus::Failed
+            )
+        }) && self.has_success()
+    }
+
+    /// Paths written in `Copy` + `SymlinkFellBackToCopy` modes, for rendering.
+    pub(super) fn copy_paths(&self) -> impl Iterator<Item = &PathBuf> {
+        self.agents.iter().filter_map(|a| match &a.status {
+            AgentInstallStatus::Copied { path }
+            | AgentInstallStatus::SymlinkFellBackToCopy { path } => Some(path),
+            _ => None,
+        })
+    }
+
+    /// Display names grouped by category for the summary renderer.
+    pub(super) fn by_status(&self) -> (Vec<&str>, Vec<&str>, Vec<&str>, Vec<&str>) {
+        let mut universal = Vec::new();
+        let mut symlinked = Vec::new();
+        let mut copied = Vec::new();
+        let mut symlink_failed = Vec::new();
+        for a in &self.agents {
+            match a.status {
+                AgentInstallStatus::Universal => universal.push(a.display_name.as_str()),
+                AgentInstallStatus::Symlinked => symlinked.push(a.display_name.as_str()),
+                AgentInstallStatus::Copied { .. } => copied.push(a.display_name.as_str()),
+                AgentInstallStatus::SymlinkFellBackToCopy { .. } => {
+                    symlink_failed.push(a.display_name.as_str());
+                }
+                AgentInstallStatus::Failed => {}
+            }
+        }
+        (universal, symlinked, copied, symlink_failed)
+    }
 }
 
 pub(super) async fn resolve_source(
@@ -94,17 +202,7 @@ pub(super) async fn do_install(
     let mut outcomes = Vec::new();
 
     for skill_item in selected_skills {
-        let mut outcome = SkillInstallOutcome {
-            skill_name: skill_item.name.clone(),
-            plugin_name: skill_item.plugin_name.clone(),
-            canonical_path: None,
-            universal_agents: Vec::new(),
-            symlinked_agents: Vec::new(),
-            copied_agents: Vec::new(),
-            symlink_failed_agents: Vec::new(),
-            failed_agents: Vec::new(),
-            copy_paths: Vec::new(),
-        };
+        let mut outcome = SkillInstallOutcome::new(skill_item);
 
         for agent_id in target_agents {
             let display_name = manager
@@ -112,12 +210,13 @@ pub(super) async fn do_install(
                 .get(agent_id)
                 .map_or_else(|| agent_id.to_string(), |c| c.display_name.clone());
 
-            match manager
+            let status = match manager
                 .install_skill(skill_item, agent_id, install_opts)
                 .await
             {
                 Ok(result) => {
-                    classify_result(manager, agent_id, &result, &display_name, &mut outcome);
+                    record_canonical(&mut outcome, &result);
+                    classify(manager, agent_id, &result)
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -126,9 +225,14 @@ pub(super) async fn do_install(
                         error = %e,
                         "install failed"
                     );
-                    outcome.failed_agents.push(display_name);
+                    AgentInstallStatus::Failed
                 }
-            }
+            };
+
+            outcome.agents.push(AgentOutcome {
+                display_name,
+                status,
+            });
         }
 
         outcomes.push(outcome);
@@ -137,30 +241,33 @@ pub(super) async fn do_install(
     outcomes
 }
 
-fn classify_result(
+fn record_canonical(outcome: &mut SkillInstallOutcome, result: &InstallResult) {
+    if outcome.canonical_path.is_some() {
+        return;
+    }
+    outcome.canonical_path = result
+        .canonical_path
+        .clone()
+        .or_else(|| Some(result.path.clone()));
+}
+
+fn classify(
     manager: &SkillManager,
     agent_id: &AgentId,
     result: &InstallResult,
-    display_name: &str,
-    outcome: &mut SkillInstallOutcome,
-) {
-    if outcome.canonical_path.is_none() {
-        outcome.canonical_path = result
-            .canonical_path
-            .clone()
-            .or_else(|| Some(result.path.clone()));
-    }
-
+) -> AgentInstallStatus {
     if manager.agents().is_universal(agent_id) {
-        outcome.universal_agents.push(display_name.to_owned());
+        AgentInstallStatus::Universal
     } else if result.symlink_failed {
-        outcome.symlink_failed_agents.push(display_name.to_owned());
-        outcome.copy_paths.push(result.path.clone());
+        AgentInstallStatus::SymlinkFellBackToCopy {
+            path: result.path.clone(),
+        }
     } else if result.mode == InstallMode::Copy {
-        outcome.copied_agents.push(display_name.to_owned());
-        outcome.copy_paths.push(result.path.clone());
+        AgentInstallStatus::Copied {
+            path: result.path.clone(),
+        }
     } else {
-        outcome.symlinked_agents.push(display_name.to_owned());
+        AgentInstallStatus::Symlinked
     }
 }
 
@@ -174,17 +281,7 @@ pub(super) async fn install_wellknown_skills(
     let mut outcomes = Vec::new();
 
     for wk in wk_skills {
-        let mut outcome = SkillInstallOutcome {
-            skill_name: wk.remote.name.clone(),
-            plugin_name: None,
-            canonical_path: None,
-            universal_agents: Vec::new(),
-            symlinked_agents: Vec::new(),
-            copied_agents: Vec::new(),
-            symlink_failed_agents: Vec::new(),
-            failed_agents: Vec::new(),
-            copy_paths: Vec::new(),
-        };
+        let mut outcome = SkillInstallOutcome::for_wellknown(wk);
 
         for agent_id in target_agents {
             let display_name = manager
@@ -193,11 +290,14 @@ pub(super) async fn install_wellknown_skills(
                 .map_or_else(|| agent_id.to_string(), |c| c.display_name.clone());
 
             let Some(agent) = manager.agents().get(agent_id) else {
-                outcome.failed_agents.push(display_name);
+                outcome.agents.push(AgentOutcome {
+                    display_name,
+                    status: AgentInstallStatus::Failed,
+                });
                 continue;
             };
 
-            match skill::installer::install_wellknown_skill_files(
+            let status = skill::installer::install_wellknown_skill_files(
                 &wk.remote.install_name,
                 &wk.files,
                 agent,
@@ -205,14 +305,15 @@ pub(super) async fn install_wellknown_skills(
                 install_opts,
             )
             .await
-            {
-                Ok(result) => {
-                    classify_result(manager, agent_id, &result, &display_name, &mut outcome);
-                }
-                Err(_) => {
-                    outcome.failed_agents.push(display_name);
-                }
-            }
+            .map_or(AgentInstallStatus::Failed, |result| {
+                record_canonical(&mut outcome, &result);
+                classify(manager, agent_id, &result)
+            });
+
+            outcome.agents.push(AgentOutcome {
+                display_name,
+                status,
+            });
         }
 
         outcomes.push(outcome);

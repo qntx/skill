@@ -161,18 +161,14 @@ fn build_agent_summary_lines(
 
 fn append_outcome_lines(lines: &mut Vec<String>, outcomes: &[&SkillInstallOutcome], cwd: &Path) {
     for outcome in outcomes {
-        let is_copy_mode = !outcome.copied_agents.is_empty()
-            && outcome.symlinked_agents.is_empty()
-            && outcome.symlink_failed_agents.is_empty();
-
-        if is_copy_mode {
+        if outcome.is_pure_copy_mode() {
             lines.push(format!(
                 "{GREEN}✓{RESET} {} {DIM}(copied){RESET}",
                 outcome.skill_name
             ));
-            for p in &outcome.copy_paths {
+            for p in outcome.copy_paths() {
                 let short = ui::shorten_path_with_cwd(p, cwd);
-                lines.push(format!("  {DIM}\u{2192}{RESET} {short}"));
+                lines.push(format!("  {DIM}→{RESET} {short}"));
             }
         } else if let Some(ref canonical) = outcome.canonical_path {
             let short = ui::shorten_path_with_cwd(canonical, cwd);
@@ -186,40 +182,44 @@ fn append_outcome_lines(lines: &mut Vec<String>, outcomes: &[&SkillInstallOutcom
 }
 
 fn append_agent_lines(lines: &mut Vec<String>, outcome: &SkillInstallOutcome) {
-    if !outcome.universal_agents.is_empty() {
+    let (universal, symlinked, copied, symlink_failed) = outcome.by_status();
+    if !universal.is_empty() {
         lines.push(format!(
             "  {GREEN}universal:{RESET} {}",
-            ui::format_list(&outcome.universal_agents)
+            ui::format_list(&str_vec_to_owned(&universal))
         ));
     }
-    if !outcome.symlinked_agents.is_empty() {
+    if !symlinked.is_empty() {
         lines.push(format!(
             "  {DIM}symlinked:{RESET} {}",
-            ui::format_list(&outcome.symlinked_agents)
+            ui::format_list(&str_vec_to_owned(&symlinked))
         ));
     }
-    if !outcome.symlink_failed_agents.is_empty() {
+    if !copied.is_empty() {
+        lines.push(format!(
+            "  {DIM}copied:{RESET} {}",
+            ui::format_list(&str_vec_to_owned(&copied))
+        ));
+    }
+    if !symlink_failed.is_empty() {
         lines.push(format!(
             "  {YELLOW}copied:{RESET} {}",
-            ui::format_list(&outcome.symlink_failed_agents)
+            ui::format_list(&str_vec_to_owned(&symlink_failed))
         ));
     }
 }
 
+fn str_vec_to_owned(slice: &[&str]) -> Vec<String> {
+    slice.iter().map(|s| (*s).to_owned()).collect()
+}
+
 /// Print the post-install results, grouped by plugin name (matching TS).
 pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path) {
-    let successful: Vec<&SkillInstallOutcome> = outcomes
-        .iter()
-        .filter(|o| {
-            !o.universal_agents.is_empty()
-                || !o.symlinked_agents.is_empty()
-                || !o.copied_agents.is_empty()
-                || !o.symlink_failed_agents.is_empty()
-        })
-        .collect();
+    let successful: Vec<&SkillInstallOutcome> =
+        outcomes.iter().filter(|o| o.has_success()).collect();
     let failed_outcomes: Vec<&SkillInstallOutcome> = outcomes
         .iter()
-        .filter(|o| !o.failed_agents.is_empty())
+        .filter(|o| o.failed_agents().next().is_some())
         .collect();
 
     if !successful.is_empty() {
@@ -264,20 +264,15 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
         let body = result_lines.join("\n");
         emit::note(title, body);
 
-        let symlink_failures: Vec<&str> = outcomes
+        let symlink_failures: Vec<String> = outcomes
             .iter()
-            .flat_map(|o| o.symlink_failed_agents.iter())
-            .map(String::as_str)
+            .flat_map(SkillInstallOutcome::symlink_fallback_agents)
+            .map(str::to_owned)
             .collect();
         if !symlink_failures.is_empty() {
             emit::warning(format!(
                 "{YELLOW}Symlinks failed for: {}{RESET}",
-                ui::format_list(
-                    &symlink_failures
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                )
+                ui::format_list(&symlink_failures)
             ));
             emit::remark(format!(
                 "{DIM}Files were copied instead. On Windows, enable Developer Mode for symlink support.{RESET}"
@@ -286,11 +281,14 @@ pub(super) fn print_install_results(outcomes: &[SkillInstallOutcome], cwd: &Path
     }
 
     if !failed_outcomes.is_empty() {
-        let total_fail: usize = failed_outcomes.iter().map(|o| o.failed_agents.len()).sum();
+        let total_fail: usize = failed_outcomes
+            .iter()
+            .map(|o| o.failed_agents().count())
+            .sum();
         println!();
         emit::error(format!("{RED}Failed to install {total_fail}{RESET}"));
         for outcome in &failed_outcomes {
-            for agent in &outcome.failed_agents {
+            for agent in outcome.failed_agents() {
                 emit::remark(format!(
                     " {RED}✗{RESET} {} → {agent}: {DIM}installation error{RESET}",
                     outcome.skill_name

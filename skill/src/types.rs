@@ -33,12 +33,6 @@ impl std::fmt::Display for AgentId {
     }
 }
 
-impl<S: Into<String>> From<S> for AgentId {
-    fn from(s: S) -> Self {
-        Self(s.into())
-    }
-}
-
 /// Configuration for a single agent.
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
@@ -216,8 +210,11 @@ pub struct InstalledSkill {
     pub description: String,
     /// Path to the installed skill directory.
     pub path: PathBuf,
-    /// Canonical path (may differ from `path` for symlinked installs).
-    pub canonical_path: PathBuf,
+    /// Canonical `.agents/skills/<name>` path when the install uses a
+    /// symlink indirection.  `None` for copy-mode installs (each agent gets
+    /// its own copy and there is no single source of truth).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_path: Option<PathBuf>,
     /// Installation scope.
     pub scope: InstallScope,
     /// Agents this skill is installed for.

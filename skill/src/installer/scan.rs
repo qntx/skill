@@ -153,7 +153,7 @@ async fn scan_skills_dir(
                 name: skill.name,
                 description: skill.description,
                 path: skill_dir.clone(),
-                canonical_path: skill_dir,
+                canonical_path: Some(skill_dir),
                 scope,
                 agents: Vec::new(),
             });
@@ -188,8 +188,8 @@ async fn scan_skills_dir_for_agent(
             let installed = map.entry(key).or_insert_with(|| InstalledSkill {
                 name: skill.name,
                 description: skill.description,
-                path: skill_dir.clone(),
-                canonical_path: skill_dir,
+                path: skill_dir,
+                canonical_path: None,
                 scope,
                 agents: Vec::new(),
             });

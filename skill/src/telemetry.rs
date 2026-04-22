@@ -49,7 +49,11 @@ fn is_ci() -> bool {
 /// Does nothing if telemetry is disabled or the `telemetry` feature is not
 /// enabled.
 #[cfg(feature = "telemetry")]
-pub fn track<S: ::std::hash::BuildHasher>(event: &str, properties: HashMap<String, String, S>) {
+#[allow(
+    clippy::implicit_hasher,
+    reason = "all call sites use the default HashMap hasher; generics would only add noise"
+)]
+pub fn track(event: &str, properties: HashMap<String, String>) {
     if is_disabled() {
         return;
     }
@@ -84,7 +88,7 @@ pub fn track<S: ::std::hash::BuildHasher>(event: &str, properties: HashMap<Strin
 
 /// No-op when the telemetry feature is disabled.
 #[cfg(not(feature = "telemetry"))]
-pub fn track<S: ::std::hash::BuildHasher>(_event: &str, _properties: HashMap<String, String, S>) {}
+pub fn track(_event: &str, _properties: HashMap<String, String>) {}
 
 /// Security audit data from partner scanners.
 #[derive(Debug, Clone, serde::Deserialize)]

@@ -70,9 +70,10 @@ pub(crate) async fn run(args: ListArgs) -> Result<()> {
                     .iter()
                     .filter_map(|id| manager.agents().get(id).map(|c| c.display_name.clone()))
                     .collect();
+                let resolved = s.canonical_path.as_deref().unwrap_or(&s.path);
                 serde_json::json!({
                     "name": s.name,
-                    "path": s.canonical_path.to_string_lossy(),
+                    "path": resolved.to_string_lossy(),
                     "scope": format!("{:?}", s.scope).to_lowercase(),
                     "agents": agents,
                 })
@@ -134,7 +135,11 @@ pub(crate) async fn run(args: ListArgs) -> Result<()> {
 
     let print_skill = |skill_item: &skill::types::InstalledSkill, indent: bool| {
         let prefix = if indent { "  " } else { "" };
-        let short_path = ui::shorten_path_with_cwd(&skill_item.canonical_path, &cwd);
+        let resolved = skill_item
+            .canonical_path
+            .as_deref()
+            .unwrap_or(&skill_item.path);
+        let short_path = ui::shorten_path_with_cwd(resolved, &cwd);
         let agent_names: Vec<String> = skill_item
             .agents
             .iter()
