@@ -82,28 +82,30 @@ impl AgentRegistry {
         self.agents.values().collect()
     }
 
-    /// Detect which agents are installed by checking for their known paths.
+    /// Detect which agents are installed by probing their known paths.
     ///
-    /// Probes every registered agent's `detect_paths` in parallel-ish fashion
-    /// (await one at a time, but per-agent loops are independent). Returns
-    /// the sorted list of installed agent IDs.
-    #[allow(
-        clippy::excessive_nesting,
-        reason = "async block reduces nesting but still triggers lint"
-    )]
+    /// Matches the TS reference `agents.ts::detectInstalledAgents`, which
+    /// uses `Promise.all` to fan-out probes across all registered agents.
+    /// Each task short-circuits on the first existing path, so best-case
+    /// latency is a single `try_exists` call regardless of how many
+    /// `detect_paths` an agent declares.
+    ///
+    /// Returns the sorted list of installed agent IDs.
     pub async fn detect_installed(&self) -> Vec<AgentId> {
-        let mut installed = Vec::new();
+        let mut set: tokio::task::JoinSet<Option<AgentId>> = tokio::task::JoinSet::new();
         for (id, config) in &self.agents {
-            let found = async {
-                for path in &config.detect_paths {
-                    if tokio::fs::try_exists(path).await.unwrap_or(false) {
-                        return true;
-                    }
-                }
-                false
-            };
-            if found.await {
-                installed.push(id.clone());
+            let id = id.clone();
+            let paths = config.detect_paths.clone();
+            set.spawn(async move { any_path_exists(&paths).await.then_some(id) });
+        }
+
+        let mut installed = Vec::with_capacity(set.len());
+        while let Some(result) = set.join_next().await {
+            // JoinSet task panics are swallowed: detection is best-effort
+            // and must never crash the caller. Missing an agent on a panic
+            // just reports it as "not installed", mirroring TS `catch`.
+            if let Ok(Some(id)) = result {
+                installed.push(id);
             }
         }
         installed.sort();
@@ -156,6 +158,20 @@ impl AgentRegistry {
     pub fn is_empty(&self) -> bool {
         self.agents.is_empty()
     }
+}
+
+/// Return true as soon as any of `paths` exists on disk.
+///
+/// Short-circuits on the first hit so detection does not pay for probing
+/// every fallback when one would do — matches the TS `||` chain in each
+/// `detectInstalled` closure.
+async fn any_path_exists(paths: &[std::path::PathBuf]) -> bool {
+    for path in paths {
+        if tokio::fs::try_exists(path).await.unwrap_or(false) {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

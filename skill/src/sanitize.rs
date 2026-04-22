@@ -161,6 +161,81 @@ const fn should_strip_char(ch: char) -> bool {
     )
 }
 
+/// Convert a skill name to a URL-safe slug for the skills.sh APIs.
+///
+/// This is a Rust port of the TypeScript reference
+/// `3rdparty/skills/src/blob.ts::toSkillSlug` and must stay byte-compatible
+/// with the server-side slugifier; otherwise `skillFilter` matches and blob
+/// downloads silently miss entries keyed under the canonical slug.
+///
+/// The algorithm in prose:
+///
+/// 1. Lowercase ASCII letters (non-ASCII letters are preserved here but
+///    dropped in step 3 — equivalent to JS `toLowerCase()` followed by the
+///    `[^a-z0-9-]` character-class filter).
+/// 2. Replace runs of ASCII whitespace or underscores with a single `-`.
+/// 3. Drop any character outside `[a-z0-9-]`.
+/// 4. Collapse consecutive `-` into one.
+/// 5. Trim leading and trailing `-`.
+///
+/// Implemented as a single pass over `chars()` with a one-bit state machine
+/// (`last_was_hyphen`) that fuses steps 2–5, so it is allocation-minimal
+/// and avoids intermediate `String`s.
+///
+/// # Examples
+///
+/// ```
+/// use skill::sanitize::to_skill_slug;
+///
+/// assert_eq!(to_skill_slug("Git Review"), "git-review");
+/// assert_eq!(to_skill_slug("__foo_bar__"), "foo-bar");
+/// assert_eq!(to_skill_slug("  hello  world  "), "hello-world");
+/// assert_eq!(to_skill_slug("hello, 世界!"), "hello");
+/// assert_eq!(to_skill_slug("!@#$"), "");
+/// ```
+#[must_use]
+pub fn to_skill_slug(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    // Seed as "just emitted a hyphen" so any leading whitespace / underscore
+    // collapses into nothing (step 5 trim on the way in).
+    let mut last_was_hyphen = true;
+
+    for ch in name.chars() {
+        let lower = ch.to_ascii_lowercase();
+
+        // Step 2: whitespace and underscores become a hyphen.
+        let normalized = if lower == '_' || lower.is_ascii_whitespace() {
+            '-'
+        } else {
+            lower
+        };
+
+        // Step 3: keep only `[a-z0-9-]`.
+        if !matches!(normalized, 'a'..='z' | '0'..='9' | '-') {
+            continue;
+        }
+
+        // Step 4: collapse consecutive hyphens.
+        if normalized == '-' {
+            if last_was_hyphen {
+                continue;
+            }
+            last_was_hyphen = true;
+        } else {
+            last_was_hyphen = false;
+        }
+
+        out.push(normalized);
+    }
+
+    // Step 5 (trailing): drop the one trailing hyphen we may have emitted.
+    if out.ends_with('-') {
+        out.pop();
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,5 +321,78 @@ mod tests {
     #[test]
     fn handles_unterminated_csi() {
         assert_eq!(sanitize_metadata("\u{001b}[31;1m"), "");
+    }
+
+    #[test]
+    fn skill_slug_lowercases_ascii() {
+        assert_eq!(to_skill_slug("HelloWorld"), "helloworld");
+        assert_eq!(to_skill_slug("ALLCAPS"), "allcaps");
+    }
+
+    #[test]
+    fn skill_slug_replaces_whitespace_and_underscores() {
+        assert_eq!(to_skill_slug("Git Review"), "git-review");
+        assert_eq!(to_skill_slug("my_skill_name"), "my-skill-name");
+        assert_eq!(to_skill_slug("tab\there"), "tab-here");
+        assert_eq!(to_skill_slug("line\nbreak"), "line-break");
+    }
+
+    #[test]
+    fn skill_slug_collapses_consecutive_separators() {
+        assert_eq!(to_skill_slug("a   b"), "a-b");
+        assert_eq!(to_skill_slug("a_-_b"), "a-b");
+        assert_eq!(to_skill_slug("a---b"), "a-b");
+        assert_eq!(to_skill_slug("__foo__bar__"), "foo-bar");
+    }
+
+    #[test]
+    fn skill_slug_trims_leading_and_trailing_separators() {
+        assert_eq!(to_skill_slug("  hello world  "), "hello-world");
+        assert_eq!(to_skill_slug("---foo---"), "foo");
+        assert_eq!(to_skill_slug("_foo_"), "foo");
+    }
+
+    #[test]
+    fn skill_slug_drops_non_ascii_alphanumerics() {
+        // Non-ASCII letters fall through lowercase but get dropped by the
+        // `[a-z0-9-]` filter, matching the TS reference exactly.
+        assert_eq!(to_skill_slug("café"), "caf");
+        assert_eq!(to_skill_slug("hello, 世界!"), "hello");
+        assert_eq!(to_skill_slug("日本語スキル"), "");
+    }
+
+    #[test]
+    fn skill_slug_drops_punctuation() {
+        assert_eq!(to_skill_slug("hello!world"), "helloworld");
+        assert_eq!(to_skill_slug("a.b/c\\d"), "abcd");
+        assert_eq!(to_skill_slug("my:skill"), "myskill");
+    }
+
+    #[test]
+    fn skill_slug_handles_empty_and_all_noise() {
+        assert_eq!(to_skill_slug(""), "");
+        assert_eq!(to_skill_slug("!@#$%"), "");
+        assert_eq!(to_skill_slug("___"), "");
+        assert_eq!(to_skill_slug("   "), "");
+        assert_eq!(to_skill_slug("---"), "");
+    }
+
+    #[test]
+    fn skill_slug_keeps_digits_and_hyphens() {
+        assert_eq!(to_skill_slug("v2.0"), "v20");
+        assert_eq!(to_skill_slug("skill-123"), "skill-123");
+        assert_eq!(to_skill_slug("123-abc-456"), "123-abc-456");
+    }
+
+    #[test]
+    fn skill_slug_mixed_sequence_preserves_order() {
+        assert_eq!(
+            to_skill_slug("React Best Practices v2.0"),
+            "react-best-practices-v20"
+        );
+        assert_eq!(
+            to_skill_slug("   Multi_Word   Skill!! "),
+            "multi-word-skill"
+        );
     }
 }

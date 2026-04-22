@@ -104,7 +104,23 @@ pub struct PartnerAudit {
     pub analyzed_at: String,
 }
 
-/// Audit response: `{ "partner_name": { "skill_slug": PartnerAudit } }`.
+/// Security audit response from the skills.sh audit API.
+///
+/// Keyed by skill name / slug at the **outer** layer and partner scanner
+/// identifier (`"ath"`, `"socket"`, `"snyk"`, ...) at the **inner** layer.
+/// Mirrors the TypeScript reference `telemetry.ts::AuditResponse`, which is
+/// `Record<string, SkillAuditData>` where `SkillAuditData = Record<string,
+/// PartnerAudit>`.
+///
+/// Example shape:
+///
+/// ```text
+/// {
+///   "my-skill":    { "ath": PartnerAudit { risk: "low", ... },
+///                    "socket": PartnerAudit { alerts: 0, ... } },
+///   "other-skill": { "snyk": PartnerAudit { risk: "high", ... } }
+/// }
+/// ```
 pub type AuditResponse = HashMap<String, HashMap<String, PartnerAudit>>;
 
 /// Fetch security audit results for skills from the audit API.

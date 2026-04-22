@@ -272,8 +272,14 @@ impl SkillManager {
         }
     }
 
-    /// Check whether any non-targeted agent still references the canonical
-    /// skill directory.
+    /// Check whether any non-targeted **detected** agent still references the
+    /// canonical skill directory.
+    ///
+    /// Matches TS `remove.ts:194-205`: only agents that are currently
+    /// installed on the system participate in the "still in use" check.
+    /// A stale directory belonging to an uninstalled agent does not block
+    /// canonical cleanup, since removing it is exactly what the user wants
+    /// when they uninstall.
     async fn canonical_still_referenced(
         &self,
         name: &str,
@@ -281,7 +287,7 @@ impl SkillManager {
         scope: InstallScope,
         cwd: &Path,
     ) -> bool {
-        for aid in self.agents.all_ids() {
+        for aid in self.agents.detect_installed().await {
             if target_agents.contains(&aid) {
                 continue;
             }
