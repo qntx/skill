@@ -10,7 +10,7 @@ use skill::sanitize::sanitize_metadata;
 use super::source_builder::build_global_source;
 use super::stats::{ScopeStats, matches_skill_filter};
 use crate::commands::add::{RunAddOptions, run_add};
-use crate::commands::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
+use crate::commands::{SkippedSkill, print_skipped_skills, should_skip, skip_reason};
 use crate::ui::{CLEAR_EOL, DIM, RESET, TEXT};
 
 /// Refresh global skills that differ from their latest upstream hash.
@@ -27,7 +27,7 @@ pub(super) async fn update(filter: &[String]) -> Result<ScopeStats> {
         return Ok(ScopeStats::default());
     }
 
-    let token = skill::github::get_token();
+    let token = skill::github::discover_token();
     let mut skipped: Vec<SkippedSkill> = Vec::new();
     let mut checkable: Vec<(&String, &SkillLockEntry)> = Vec::new();
 
@@ -38,7 +38,7 @@ pub(super) async fn update(filter: &[String]) -> Result<ScopeStats> {
         if should_skip(entry) {
             skipped.push(SkippedSkill {
                 name: name.clone(),
-                reason: get_skip_reason(entry),
+                reason: skip_reason(entry),
                 source_url: entry.source_url.clone(),
                 source_type: entry.source_type.clone(),
                 git_ref: entry.git_ref.clone(),

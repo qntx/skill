@@ -21,7 +21,7 @@ pub(super) fn send_telemetry(
         return;
     }
 
-    let Some(source_str) = skill::source::get_owner_repo(parsed) else {
+    let Some(source_str) = skill::source::owner_repo(parsed) else {
         return;
     };
 
@@ -101,7 +101,7 @@ pub(super) async fn prompt_security_advisory(
         return Ok(None);
     }
 
-    let Some(owner_repo) = skill::source::get_owner_repo(parsed) else {
+    let Some(owner_repo) = skill::source::owner_repo(parsed) else {
         return Ok(None);
     };
     let Some((owner, repo)) = skill::source::parse_owner_repo(&owner_repo) else {
@@ -213,7 +213,7 @@ pub(super) async fn prompt_for_find_skills(
 
 /// Update the global lock file after a successful git-based install.
 pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills: &[Skill]) {
-    let Some(owner_repo) = skill::source::get_owner_repo(parsed) else {
+    let Some(owner_repo) = skill::source::owner_repo(parsed) else {
         return;
     };
 
@@ -225,7 +225,7 @@ pub(super) async fn update_lock_file(parsed: &skill::types::ParsedSource, skills
         let hash = skill::github::fetch_skill_folder_hash(
             &owner_repo,
             skill_path.as_deref().unwrap_or(""),
-            skill::github::get_token().as_deref(),
+            skill::github::discover_token().as_deref(),
             parsed.git_ref.as_deref(),
         )
         .await
@@ -254,7 +254,7 @@ pub(super) async fn update_local_lock_file(
     skills: &[Skill],
     cwd: &Path,
 ) {
-    let source = skill::source::get_owner_repo(parsed).unwrap_or_else(|| parsed.url.clone());
+    let source = skill::source::owner_repo(parsed).unwrap_or_else(|| parsed.url.clone());
 
     for s in skills {
         let hash = skill::local_lock::compute_skill_folder_hash(&s.path)

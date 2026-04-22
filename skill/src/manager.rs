@@ -235,7 +235,7 @@ impl SkillManager {
         };
 
         for name in skill_names {
-            let canonical = installer::get_canonical_path(name, scope, &cwd);
+            let canonical = installer::canonical_install_path(name, scope, &cwd);
             self.cleanup_agent_paths(name, &target_agents, scope, &canonical, &cwd)
                 .await;
 

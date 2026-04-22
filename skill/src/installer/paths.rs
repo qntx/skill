@@ -93,9 +93,9 @@ pub fn agent_base_dir(
     }
 }
 
-/// Get the canonical install path for a skill.
+/// The canonical install path for a skill (`<base>/.agents/skills/<sanitized-name>`).
 #[must_use]
-pub fn get_canonical_path(skill_name: &str, scope: InstallScope, cwd: &Path) -> PathBuf {
+pub fn canonical_install_path(skill_name: &str, scope: InstallScope, cwd: &Path) -> PathBuf {
     canonical_skills_dir(scope, cwd).join(sanitize_name(skill_name))
 }
 
@@ -173,9 +173,9 @@ mod tests {
     }
 
     #[test]
-    fn get_canonical_path_sanitizes() {
+    fn canonical_install_path_sanitizes() {
         let cwd = Path::new("/project");
-        let path = get_canonical_path("My Skill!", InstallScope::Project, cwd);
+        let path = canonical_install_path("My Skill!", InstallScope::Project, cwd);
         assert_eq!(path, PathBuf::from("/project/.agents/skills/my-skill"));
     }
 }

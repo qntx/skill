@@ -110,7 +110,7 @@ pub(crate) async fn run_add(opts: RunAddOptions) -> Result<()> {
 
 /// Whether the parsed source resolves to the `openclaw/*` org.
 fn is_openclaw_source(parsed: &skill::types::ParsedSource) -> bool {
-    skill::source::get_owner_repo(parsed)
+    skill::source::owner_repo(parsed)
         .and_then(|s| s.split('/').next().map(str::to_ascii_lowercase))
         .is_some_and(|owner| owner == "openclaw")
 }
@@ -136,7 +136,7 @@ pub(crate) async fn run(mut args: AddArgs) -> Result<()> {
     let manager = SkillManager::builder().build();
     let cwd = std::env::current_dir().into_diagnostic()?;
 
-    let sources = args.source.clone();
+    let sources = std::mem::take(&mut args.source);
     let mut last_agents: Vec<AgentId> = Vec::new();
     for source in &sources {
         if let Some(agents) = run_single_source(source, &mut args, &manager, &cwd).await? {
@@ -334,7 +334,7 @@ fn spawn_audit_fetch(
     if is_private.unwrap_or(false) {
         return None;
     }
-    let source_id = skill::source::get_owner_repo(parsed).unwrap_or_default();
+    let source_id = skill::source::owner_repo(parsed).unwrap_or_default();
     let skill_slugs: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
     Some(tokio::spawn(async move {
         skill::telemetry::fetch_audit_data(&source_id, &skill_slugs).await
@@ -353,7 +353,7 @@ async fn await_audit_and_display(
     let Ok(Some(audit_data)) = handle.await else {
         return;
     };
-    let Some(source) = skill::source::get_owner_repo(parsed) else {
+    let Some(source) = skill::source::owner_repo(parsed) else {
         return;
     };
     output::print_security_audit(&audit_data, selected_skills, &source);

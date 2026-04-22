@@ -7,9 +7,10 @@ use std::path::PathBuf;
 
 use crate::error::{Result, SkillError};
 
-/// Get a GitHub token from the environment or `gh` CLI.
+/// Discover a GitHub token from the environment (`GITHUB_TOKEN` / `GH_TOKEN`)
+/// or by shelling out to the `gh` CLI.
 #[must_use]
-pub fn get_token() -> Option<String> {
+pub fn discover_token() -> Option<String> {
     if let Ok(token) = std::env::var("GITHUB_TOKEN")
         && !token.is_empty()
     {

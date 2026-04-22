@@ -77,7 +77,7 @@ pub(super) async fn print_installation_summary(
                 if !out_lines.is_empty() {
                     out_lines.push(String::new());
                 }
-                let canonical = skill::installer::get_canonical_path(&s.name, scope, cwd);
+                let canonical = skill::installer::canonical_install_path(&s.name, scope, cwd);
                 let short = ui::shorten_path_with_cwd(&canonical, cwd);
                 out_lines.push(format!("{CYAN}{short}{RESET}"));
                 out_lines.extend(build_agent_summary_lines(agents, manager, mode));

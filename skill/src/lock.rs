@@ -230,26 +230,6 @@ pub async fn remove_skill_from_lock(skill_name: &str) -> Result<bool> {
     Ok(removed)
 }
 
-/// Get a single skill entry from the lock file.
-///
-/// # Errors
-///
-/// Returns an error on I/O failure.
-pub async fn get_skill_from_lock(skill_name: &str) -> Result<Option<SkillLockEntry>> {
-    let lock = read_skill_lock().await?;
-    Ok(lock.skills.get(skill_name).cloned())
-}
-
-/// Get all skills from the lock file.
-///
-/// # Errors
-///
-/// Returns an error on I/O failure.
-pub async fn get_all_locked_skills() -> Result<std::collections::HashMap<String, SkillLockEntry>> {
-    let lock = read_skill_lock().await?;
-    Ok(lock.skills)
-}
-
 /// Check if a prompt has been dismissed.
 ///
 /// # Errors
@@ -292,12 +272,12 @@ pub async fn save_selected_agents(agents: &[String]) -> Result<()> {
     write_skill_lock(&lock).await
 }
 
-/// Get the last selected agents.
+/// Read the last selected agents from the lock file.
 ///
 /// # Errors
 ///
 /// Returns an error on I/O failure.
-pub async fn get_last_selected_agents() -> Result<Option<Vec<String>>> {
+pub async fn read_last_selected_agents() -> Result<Option<Vec<String>>> {
     let lock = read_skill_lock().await?;
     Ok(lock.last_selected_agents)
 }

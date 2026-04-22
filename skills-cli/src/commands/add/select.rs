@@ -335,7 +335,7 @@ async fn prompt_with_detected(
         .map(|id| id.as_str().to_owned())
         .collect();
 
-    let last_selected = skill::lock::get_last_selected_agents()
+    let last_selected = skill::lock::read_last_selected_agents()
         .await
         .unwrap_or(None);
     let initial = last_selected.as_ref().map_or(initial, Clone::clone);

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use miette::Result;
 
-use super::{SkippedSkill, get_skip_reason, print_skipped_skills, should_skip};
+use super::{SkippedSkill, print_skipped_skills, should_skip, skip_reason};
 use crate::ui::{DIM, RESET, TEXT};
 
 /// Run the check command.
@@ -25,7 +25,7 @@ pub(crate) async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let token = skill::github::get_token();
+    let token = skill::github::discover_token();
     let mut updates: Vec<(String, String)> = Vec::new();
     let mut skipped: Vec<SkippedSkill> = Vec::new();
     let mut errors: Vec<(String, String, String)> = Vec::new();
@@ -34,7 +34,7 @@ pub(crate) async fn run() -> Result<()> {
         if should_skip(entry) {
             skipped.push(SkippedSkill {
                 name: name.clone(),
-                reason: get_skip_reason(entry),
+                reason: skip_reason(entry),
                 source_url: entry.source_url.clone(),
                 source_type: entry.source_type.clone(),
                 git_ref: entry.git_ref.clone(),

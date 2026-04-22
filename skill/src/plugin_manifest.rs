@@ -160,12 +160,12 @@ async fn parse_plugin_manifests(base_path: &Path) -> PluginManifestData {
     data
 }
 
-/// Extract skill search directories from plugin manifests.
-pub(crate) async fn get_plugin_skill_paths(base_path: &Path) -> Vec<PathBuf> {
+/// Skill search directories declared in plugin manifests.
+pub(crate) async fn search_dirs(base_path: &Path) -> Vec<PathBuf> {
     parse_plugin_manifests(base_path).await.search_dirs
 }
 
-/// Get a map of skill directory paths to plugin names from plugin manifests.
-pub(crate) async fn get_plugin_groupings(base_path: &Path) -> HashMap<PathBuf, String> {
+/// Map from skill directory path to its owning plugin name.
+pub(crate) async fn groupings(base_path: &Path) -> HashMap<PathBuf, String> {
     parse_plugin_manifests(base_path).await.groupings
 }

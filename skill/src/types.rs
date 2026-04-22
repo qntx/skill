@@ -76,6 +76,24 @@ pub struct Skill {
     pub metadata: Option<HashMap<String, serde_yml::Value>>,
 }
 
+impl Skill {
+    /// Human-friendly label for this skill.
+    ///
+    /// Returns [`Skill::name`] when non-empty, otherwise falls back to the
+    /// directory name, and finally to `"unnamed"` if even the path has no
+    /// last component.
+    #[must_use]
+    pub fn display_name(&self) -> &str {
+        if !self.name.is_empty() {
+            return &self.name;
+        }
+        self.path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unnamed")
+    }
+}
+
 /// A skill fetched from a remote host provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteSkill {

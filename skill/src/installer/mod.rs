@@ -11,5 +11,5 @@ mod scan;
 pub use install::{
     install_remote_skill_content, install_skill_for_agent, install_wellknown_skill_files,
 };
-pub use paths::{agent_base_dir, canonical_skills_dir, get_canonical_path, sanitize_name};
+pub use paths::{agent_base_dir, canonical_install_path, canonical_skills_dir, sanitize_name};
 pub use scan::{is_skill_installed, is_skill_installed_owned, list_installed_skills};

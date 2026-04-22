@@ -209,8 +209,8 @@ pub async fn discover_skills(
     let mut seen_names: HashSet<String> = HashSet::new();
     let include_internal = options.include_internal;
 
-    // Get plugin groupings to map skills to their parent plugin.
-    let plugin_groupings = crate::plugin_manifest::get_plugin_groupings(&search_path).await;
+    // Map skills to their parent plugin via manifest groupings.
+    let plugin_groupings = crate::plugin_manifest::groupings(&search_path).await;
 
     let enhance_skill = |mut skill: Skill| -> Skill {
         let resolved = std::path::absolute(&skill.path).unwrap_or_else(|_| skill.path.clone());
@@ -234,7 +234,7 @@ pub async fn discover_skills(
 
     // 2. Priority search directories + plugin manifest paths
     let mut priority_dirs = build_priority_dirs(&search_path);
-    priority_dirs.extend(crate::plugin_manifest::get_plugin_skill_paths(&search_path).await);
+    priority_dirs.extend(crate::plugin_manifest::search_dirs(&search_path).await);
 
     for dir in &priority_dirs {
         let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
@@ -310,21 +310,8 @@ fn build_priority_dirs(search_path: &Path) -> Vec<PathBuf> {
     ]
 }
 
-/// Get a display name for a skill (falls back to directory name).
-#[must_use]
-pub fn get_skill_display_name(skill: &Skill) -> &str {
-    if skill.name.is_empty() {
-        skill
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unnamed")
-    } else {
-        &skill.name
-    }
-}
-
-/// Filter skills by a list of names (case-insensitive match).
+/// Filter skills by a list of names (case-insensitive match against both
+/// [`Skill::name`] and [`Skill::display_name`]).
 #[must_use]
 pub fn filter_skills(skills: &[Skill], input_names: &[String]) -> Vec<Skill> {
     let normalized: Vec<String> = input_names.iter().map(|n| n.to_lowercase()).collect();
@@ -332,7 +319,7 @@ pub fn filter_skills(skills: &[Skill], input_names: &[String]) -> Vec<Skill> {
         .iter()
         .filter(|skill| {
             let name = skill.name.to_lowercase();
-            let display = get_skill_display_name(skill).to_lowercase();
+            let display = skill.display_name().to_lowercase();
             normalized
                 .iter()
                 .any(|input| *input == name || *input == display)

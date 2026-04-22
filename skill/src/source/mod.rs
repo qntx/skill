@@ -9,7 +9,7 @@
 //! - `fragment` — `#ref[@filter]` parsing for ref-aware installs
 //! - `matchers` — individual URL-shape matchers composed by [`parse_source`]
 //!
-//! The public API is this module's [`parse_source`], [`get_owner_repo`],
+//! The public API is this module's [`parse_source`], [`owner_repo`],
 //! [`parse_owner_repo`], and [`sanitize_subpath`].
 
 mod fragment;
@@ -18,8 +18,6 @@ mod regex;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
-
-use ::regex::Regex;
 
 use self::fragment::FragmentRef;
 use crate::error::{Result, SkillError};
@@ -145,24 +143,21 @@ fn parse_fragment_free(input: &str) -> ParsedSource {
 /// # Examples
 ///
 /// ```
-/// use skill::source::{get_owner_repo, parse_source};
+/// use skill::source::{owner_repo, parse_source};
 ///
 /// let parsed = parse_source("https://github.com/vercel-labs/skills.git");
-/// assert_eq!(get_owner_repo(&parsed).as_deref(), Some("vercel-labs/skills"));
+/// assert_eq!(owner_repo(&parsed).as_deref(), Some("vercel-labs/skills"));
 /// ```
 #[must_use]
-pub fn get_owner_repo(parsed: &ParsedSource) -> Option<String> {
+pub fn owner_repo(parsed: &ParsedSource) -> Option<String> {
     if parsed.source_type == SourceType::Local {
         return None;
     }
 
     // SSH URLs: git@host:path
-    if let Some(caps) = Regex::new(r"^git@[^:]+:(.+)$").ok()?.captures(&parsed.url) {
+    if let Some(caps) = regex::ssh_url_re().captures(&parsed.url) {
         let path = caps[1].trim_end_matches(".git");
-        if path.contains('/') {
-            return Some(path.to_owned());
-        }
-        return None;
+        return path.contains('/').then(|| path.to_owned());
     }
 
     if let Ok(url) = url::Url::parse(&parsed.url) {
@@ -287,13 +282,13 @@ mod tests {
     }
 
     #[test]
-    fn test_get_owner_repo_extracts_from_https_url() {
+    fn test_owner_repo_extracts_from_https_url() {
         let p = parse_source("https://github.com/foo/bar.git");
-        assert_eq!(get_owner_repo(&p).as_deref(), Some("foo/bar"));
+        assert_eq!(owner_repo(&p).as_deref(), Some("foo/bar"));
     }
 
     #[test]
-    fn test_get_owner_repo_extracts_from_ssh_url() {
+    fn test_owner_repo_extracts_from_ssh_url() {
         let p = ParsedSource {
             source_type: SourceType::Git,
             url: "git@github.com:foo/bar.git".to_owned(),
@@ -302,13 +297,13 @@ mod tests {
             git_ref: None,
             skill_filter: None,
         };
-        assert_eq!(get_owner_repo(&p).as_deref(), Some("foo/bar"));
+        assert_eq!(owner_repo(&p).as_deref(), Some("foo/bar"));
     }
 
     #[test]
-    fn test_get_owner_repo_none_for_local() {
+    fn test_owner_repo_none_for_local() {
         let p = parse_source("./somewhere");
-        assert_eq!(get_owner_repo(&p), None);
+        assert_eq!(owner_repo(&p), None);
     }
 
     #[test]

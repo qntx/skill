@@ -25,6 +25,22 @@
 //! # }
 //! ```
 //!
+//! ## Module Map
+//!
+//! - [`manager`] — [`SkillManager`] façade; the main entry point for
+//!   agent frameworks.
+//! - [`types`]   — plain data types (`Skill`, `AgentId`, `InstallScope`, …).
+//! - [`error`]   — library-wide [`SkillError`] / [`Result`].
+//! - [`agents`]  — built-in agent registry + custom registration hooks.
+//! - [`skills`]  — on-disk skill discovery and `SKILL.md` parsing.
+//! - [`installer`] — install / remove / scan choreography.
+//! - [`source`]  — source-string parsing (`owner/repo`, URLs, local paths).
+//! - [`providers`] — remote skill hosts (well-known, GitHub, GitLab).
+//! - [`lock`] / [`local_lock`] — global and project lock-file I/O.
+//! - [`blob`], [`git`], [`github`] — network transports (feature-gated).
+//! - [`sanitize`] — input sanitization helpers.
+//! - [`telemetry`] — anonymous usage reporting (feature-gated).
+//!
 //! ## Feature Flags
 //!
 //! - **`network`** (default) — Enables HTTP-based operations (fetching remote

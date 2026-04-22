@@ -267,7 +267,8 @@ fn report_discovered_skills(skills: &[Skill], node_modules: &Path) {
 fn print_sync_summary(skills_to_sync: &[Skill], cwd: &Path, node_modules: &Path) {
     let mut summary_lines: Vec<String> = Vec::new();
     for s in skills_to_sync {
-        let canonical = skill::installer::get_canonical_path(&s.name, InstallScope::Project, cwd);
+        let canonical =
+            skill::installer::canonical_install_path(&s.name, InstallScope::Project, cwd);
         let short = ui::shorten_path_with_cwd(&canonical, cwd);
         let pkg = derive_package_name(&s.path, node_modules);
         summary_lines.push(format!("{CYAN}{}{RESET} {DIM}← {pkg}{RESET}", s.name));

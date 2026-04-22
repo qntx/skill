@@ -45,7 +45,7 @@ pub(crate) const fn should_skip(entry: &skill::lock::SkillLockEntry) -> bool {
 /// `!skillFolderHash` \u2192 "Private or deleted repo",
 /// `!skillPath`       \u2192 "No skill path recorded",
 /// else               \u2192 "No version tracking".
-pub(crate) fn get_skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
+pub(crate) fn skip_reason(entry: &skill::lock::SkillLockEntry) -> String {
     match entry.source_type.as_str() {
         "local" => "Local path".to_owned(),
         "git" => "Git URL".to_owned(),
@@ -66,7 +66,7 @@ fn format_source_input(source_url: &str, git_ref: Option<&str>) -> String {
 /// For well-known skills the stored `source_url` points at `SKILL.md` inside
 /// `.well-known/...`; we strip that suffix so the printed command matches the
 /// URL the user originally typed. Mirrors TS `getInstallSource`.
-fn get_install_source(skill: &SkippedSkill) -> String {
+fn install_source(skill: &SkippedSkill) -> String {
     let mut url = skill.source_url.as_str();
     if skill.source_type == "well-known"
         && let Some(idx) = url.find("/.well-known/")
@@ -94,7 +94,7 @@ pub(crate) fn print_skipped_skills(skipped: &[SkippedSkill]) {
     let mut grouped: BTreeMap<String, Vec<&SkippedSkill>> = BTreeMap::new();
     let mut order: Vec<String> = Vec::new();
     for s in skipped {
-        let key = get_install_source(s);
+        let key = install_source(s);
         if !grouped.contains_key(&key) {
             order.push(key.clone());
         }

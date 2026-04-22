@@ -59,6 +59,9 @@ static_regex! {
 
     /// Path component of a GitLab repo or tree URL (used by fragment logic).
     gitlab_path_re => r"^/.+?/[^/]+(?:\.git)?(?:/-/tree/[^/]+(?:/.*)?)?/?$";
+
+    /// SSH URL: `git@host:path`.
+    ssh_url_re => r"^git@[^:]+:(.+)$";
 }
 
 /// Check whether `input` is a local filesystem path.

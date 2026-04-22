@@ -165,12 +165,12 @@ pub(super) async fn resolve_source(
     // `try_blob_install` returns `Ok(None)` on any non-fatal error so we
     // silently fall back to `git clone` in that case.
     if parsed.source_type == SourceType::Github
-        && let Some(owner_repo) = skill::source::get_owner_repo(parsed)
+        && let Some(owner_repo) = skill::source::owner_repo(parsed)
     {
         // For shorthand `owner/repo/subpath`, `subpath` already holds the
         // right prefix; for tree URLs the subpath was extracted from the
         // path, so it also works without extra massaging.
-        let token = skill::github::get_token();
+        let token = skill::github::discover_token();
         match skill::blob::try_blob_install(
             &owner_repo,
             parsed.subpath.as_deref(),
