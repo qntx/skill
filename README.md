@@ -27,13 +27,13 @@ Supports **Cursor**, **Claude Code**, **Windsurf**, **Codex**, and [35 more](#su
 **Shell** (macOS / Linux):
 
 ```sh
-curl -fsSL https://sh.qntx.fun/skill | sh
+curl -fsSL https://sh.qntx.org/skill | sh
 ```
 
 **PowerShell** (Windows):
 
 ```powershell
-irm https://sh.qntx.fun/skill/ps | iex
+irm https://sh.qntx.org/skill/ps | iex
 ```
 
 ## Quick Start
@@ -561,9 +561,9 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 
 <div align="center">
 
-A **[QuantX](https://qntx.fun)** open-source project.
+A **[QuantX](https://qntx.org)** open-source project.
 
-<a href="https://qntx.fun"><img alt="QuantX" width="369" src="https://raw.githubusercontent.com/qntx/.github/main/profile/qntx.svg" /></a>
+<a href="https://qntx.org"><img alt="QuantX" width="369" src="https://raw.githubusercontent.com/qntx/.github/main/profile/qntx.svg" /></a>
 
 Code is law. We write both.
 
