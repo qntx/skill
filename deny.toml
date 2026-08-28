@@ -1,4 +1,4 @@
-# cargo-deny configuration for the .cutover-worktrees/skill workspace.
+# cargo-deny configuration for the skill workspace.
 # Run: `cargo deny check` (also wired into CI / Justfile).
 
 [graph]
