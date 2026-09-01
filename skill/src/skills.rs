@@ -20,9 +20,7 @@ const MAX_DEPTH: usize = 5;
 /// Check whether `INSTALL_INTERNAL_SKILLS` is enabled.
 #[must_use]
 pub fn should_install_internal_skills() -> bool {
-    std::env::var("INSTALL_INTERNAL_SKILLS")
-        .ok()
-        .is_some_and(|v| v == "1" || v == "true")
+    std::env::var("INSTALL_INTERNAL_SKILLS").is_ok_and(|v| v == "1" || v == "true")
 }
 
 /// Parse a `SKILL.md` file and return a [`Skill`] if valid.
