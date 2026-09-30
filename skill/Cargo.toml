@@ -28,7 +28,7 @@ reqwest = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["fs", "process", "io-util", "macros", "rt"] }
 
 [target.'cfg(windows)'.dependencies]
-junction = "1"
+junction = "2"
 
 [features]
 default = ["network"]
